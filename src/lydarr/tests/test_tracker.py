@@ -2,11 +2,12 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone, timedelta
 
-from animeschedule.types import AirStatus, EpisodeRecord, AnimeDetail
+from animeschedule.types import AirStatus, EpisodeRecord, AnimeDetail, NotFoundError
+from anilist.types import AnilistMedia, MediaType as AnilistMediaType, MediaStatus as AnilistMediaStatus
 from lydarr.config import AppConfig
 from lydarr.file_manager import MediaEntry, MediaState
 from lydarr.tracker import (
-    _log, _pad, _next_episode_time, _step_anime, track_media,
+    _log, _pad, _next_episode_time, _step_anime, track_media, _resolve_schedule,
 )
 
 
@@ -54,6 +55,20 @@ def _make_episodes(n: int, past: bool = True) -> list[EpisodeRecord]:
             t = now + delta * i
         records.append(EpisodeRecord(number = i, raw = t, sub = t, dub = None))
     return records
+
+
+def _make_anilist_result(romaji: str) -> AnilistMedia:
+    return AnilistMedia(
+        id = 1,
+        title_english = "Solo Leveling",
+        title_romaji = romaji,
+        media_type = AnilistMediaType.ANIME,
+        status = AnilistMediaStatus.FINISHED,
+        episodes = 2,
+        chapters = None,
+        next_airing_at = None,
+        next_airing_episode = None,
+    )
 
 
 def test_log_prints(capsys):
@@ -202,6 +217,58 @@ async def test_step_anime_unknown_status():
 
 
 @pytest.mark.asyncio
+async def test_resolve_schedule_succeeds_directly():
+    detail = _make_detail(AirStatus.FINISHED)
+    episodes = _make_episodes(2)
+    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)):
+        result_detail, result_eps = await _resolve_schedule("Solo Leveling")
+    assert result_detail is detail
+
+
+@pytest.mark.asyncio
+async def test_resolve_schedule_romaji_fallback():
+    detail = _make_detail(AirStatus.FINISHED)
+    episodes = _make_episodes(2)
+    anilist_result = _make_anilist_result("Tensei shitara Slime Datta Ken 4th Season")
+
+    fetch_calls = []
+
+    async def mock_fetch(name):
+        fetch_calls.append(name)
+        if name == "That Time I Got Reincarnated as a Slime Season 4":
+            raise NotFoundError("not found")
+        return (detail, episodes)
+
+    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, side_effect = mock_fetch), \
+         patch("lydarr.tracker._anilist_find", new_callable = AsyncMock, return_value = anilist_result):
+        result_detail, _ = await _resolve_schedule("That Time I Got Reincarnated as a Slime Season 4")
+
+    assert fetch_calls == [
+        "That Time I Got Reincarnated as a Slime Season 4",
+        "Tensei shitara Slime Datta Ken 4th Season",
+    ]
+    assert result_detail is detail
+
+
+@pytest.mark.asyncio
+async def test_resolve_schedule_raises_when_romaji_also_fails():
+    anilist_result = _make_anilist_result("Tensei shitara Slime Datta Ken 4th Season")
+
+    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, side_effect = NotFoundError("not found")), \
+         patch("lydarr.tracker._anilist_find", new_callable = AsyncMock, return_value = anilist_result):
+        with pytest.raises(NotFoundError):
+            await _resolve_schedule("That Time I Got Reincarnated as a Slime Season 4")
+
+
+@pytest.mark.asyncio
+async def test_resolve_schedule_raises_when_no_anilist_result():
+    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, side_effect = NotFoundError("not found")), \
+         patch("lydarr.tracker._anilist_find", new_callable = AsyncMock, return_value = None):
+        with pytest.raises(NotFoundError):
+            await _resolve_schedule("Unknown Title")
+
+
+@pytest.mark.asyncio
 async def test_track_media_stops_on_false():
     cfg = _make_cfg()
     state = _make_state()
@@ -256,3 +323,26 @@ async def test_track_media_manga_uses_step_manga():
     mock_anime.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_track_media_picks_up_updated_entry():
+    """search_name and submitter updates written to state are reflected on subsequent iterations."""
+    entry = MediaEntry(title = "Solo Leveling")
+    state = MediaState([entry])
+    cfg = _make_cfg()
+
+    seen_search_names = []
+    call_count = 0
+
+    async def mock_step(_, s, e):
+        nonlocal call_count
+        call_count += 1
+        seen_search_names.append(e.search_name)
+        if call_count == 1:
+            state._entries = [MediaEntry(title = "Solo Leveling", search_name = "SL S2")]
+            return True
+        return False
+
+    with patch("lydarr.tracker._step_anime", new_callable = AsyncMock, side_effect = mock_step):
+        await track_media(cfg, state, entry)
+
+    assert seen_search_names == ["", "SL S2"]

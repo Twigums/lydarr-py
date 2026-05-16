@@ -95,6 +95,19 @@ def test_write_with_search_name(tmp_path):
     assert "Solo Leveling S2" in content
 
 
+def test_media_state_get_found():
+    entries = [MediaEntry(title = "Solo Leveling"), MediaEntry(title = "Dan Da Dan")]
+    state = MediaState(entries)
+    result = state.get("Solo Leveling")
+    assert result is not None
+    assert result.title == "Solo Leveling"
+
+
+def test_media_state_get_not_found():
+    state = MediaState([MediaEntry(title = "Solo Leveling")])
+    assert state.get("Nonexistent") is None
+
+
 def test_media_state_entries():
     entries = [MediaEntry(title = "Solo Leveling"), MediaEntry(title = "Dan Da Dan")]
     state = MediaState(entries)

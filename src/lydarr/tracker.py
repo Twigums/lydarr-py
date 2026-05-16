@@ -2,10 +2,10 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from animeschedule.types import AirStatus, EpisodeRecord
+from animeschedule.types import AirStatus, EpisodeRecord, NotFoundError
 from animeschedule.schedule import fetch_by_name
-from anilist.search import find_by_title
-from anilist.types import MediaType, MediaStatus
+from anilist.search import find_by_title, find_by_title as _anilist_find
+from anilist.types import MediaType, MediaStatus, MediaType as _AnilistMediaType
 from lydarr.config import AppConfig
 from lydarr.file_manager import MediaState, MediaEntry
 from lydarr.nyaa_search import search_episode, search_chapter
@@ -33,6 +33,17 @@ def _next_episode_time(
 ) -> tuple[int, datetime] | None:
     future = [(ep.number, ep.sub) for ep in episodes if ep.sub is not None and ep.sub > now]
     return min(future, key = lambda x: x[1]) if future else None
+
+
+async def _resolve_schedule(name: str):
+    try:
+        return await fetch_by_name(name)
+    except NotFoundError:
+        info = await _anilist_find(name, _AnilistMediaType.ANIME)
+        if info and info.title_romaji and info.title_romaji.lower() != name.lower():
+            _log(name, f"AnimeSchedule lookup failed; retrying with romaji: {info.title_romaji}")
+            return await fetch_by_name(info.title_romaji)
+        raise
 
 
 async def _add_magnet(cfg: AppConfig, name: str, magnet: str, label: str) -> None:
@@ -74,7 +85,7 @@ async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> b
     name = entry.title
     nyaa_name = entry.search_name or entry.title
     now = datetime.now(tz = timezone.utc)
-    detail, episodes = await fetch_by_name(name)
+    detail, episodes = await _resolve_schedule(name)
 
     match detail.status:
         case AirStatus.FINISHED:
@@ -170,8 +181,9 @@ async def _step_manga(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> b
 async def track_media(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> None:
     step = _step_manga if entry.media_type == "manga" else _step_anime
     while True:
+        current = state.get(entry.title) or entry
         try:
-            if not await step(cfg, state, entry):
+            if not await step(cfg, state, current):
                 return
         except Exception as exc:
             _log(entry.title, f"Unexpected error: {exc}. Retrying in 1h.")

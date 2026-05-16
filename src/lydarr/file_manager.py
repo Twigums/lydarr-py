@@ -67,6 +67,9 @@ class MediaState:
     def entries(self) -> list[MediaEntry]:
         return list(self._entries)
 
+    def get(self, title: str) -> MediaEntry | None:
+        return next((e for e in self._entries if e.title == title), None)
+
     def titles(self) -> list[str]:
         return [e.title for e in self._entries]
 

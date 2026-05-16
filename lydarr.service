@@ -1,0 +1,16 @@
+[Unit]
+Description=lydarr — anime/manga torrent tracker daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/twi/git/lydarr-py
+ExecStart=/home/twi/git/lydarr-py/.venv/bin/python -m lydarr
+Restart=on-failure
+RestartSec=10
+
+# Load environment variables from a file (copy .env.example → .env and fill in values)
+EnvironmentFile=-%h/.config/lydarr/env
+
+[Install]
+WantedBy=default.target

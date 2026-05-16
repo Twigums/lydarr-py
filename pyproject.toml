@@ -1,0 +1,42 @@
+[project]
+name = "lydarr"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx",
+    "beautifulsoup4",
+    "lxml",
+    "defusedxml",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-dotenv",
+    "rapidfuzz>=3.14.5",
+]
+
+[project.scripts]
+lydarr = "lydarr.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lydarr", "modules/nyaa", "modules/animeschedule", "modules/anilist"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = [
+    "modules/nyaa/tests",
+    "modules/animeschedule/tests",
+    "modules/anilist/tests",
+    "src/lydarr/tests",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "httpx",
+    "vulture>=2.16",
+]

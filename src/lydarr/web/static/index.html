@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lydarr</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d1a;
+    --surface: #141428;
+    --surface2: #1a1a35;
+    --border: #2a2a4a;
+    --text: #d0d0e8;
+    --text-muted: #6b6b8a;
+    --accent: #7c6af7;
+    --accent-hover: #9485ff;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --blue: #3b82f6;
+    --slate: #64748b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+  .dot.grey  { background: var(--slate); }
+
+  .label-muted { color: var(--text-muted); font-size: 12px; }
+
+  header .spacer { flex: 1; }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  /* ── Buttons ── */
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: var(--border); }
+  button.danger { background: var(--red); }
+  button.danger:hover { background: #dc2626; }
+  button.success { background: var(--green); }
+  button.success:hover { background: #16a34a; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ── Main layout ── */
+  main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .panel {
+    padding: 18px;
+    overflow-y: auto;
+    min-width: 150px;
+  }
+
+  .panel-resize-handle {
+    width: 5px;
+    background: var(--border);
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .panel-resize-handle:hover, .panel-resize-handle.resizing { background: var(--accent); }
+
+  @media (max-width: 850px) {
+    main { flex-direction: column; overflow-x: hidden; overflow-y: auto; }
+    .panel { flex: none !important; width: 100%; min-width: 0; min-height: 280px; }
+    .panel-resize-handle { width: 100%; height: 5px; cursor: row-resize; }
+  }
+
+  .panel h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 14px;
+  }
+
+  /* ── Form controls ── */
+  .row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+
+  input[type="text"], input[type="number"], select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  input[type="text"].grow { flex: 1; min-width: 0; }
+  input[type="number"] { width: 70px; }
+
+  .search-wrap { position: relative; flex: 1; min-width: 0; }
+  .search-wrap > input[type="text"] { width: 100%; padding-right: 26px; }
+  button.clear-btn {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; padding: 0 3px; cursor: pointer;
+    font-size: 14px; color: var(--text-muted); line-height: 1; display: none;
+  }
+  button.clear-btn:hover { background: none; color: var(--text); }
+  .search-wrap > input:not(:placeholder-shown) ~ button.clear-btn { display: block; }
+
+  .filters { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 13px; }
+  input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
+
+  /* ── Results ── */
+  .results { margin-top: 10px; }
+
+  .empty-msg { color: var(--text-muted); font-size: 13px; padding: 12px 0; }
+
+  /* Anime result card */
+  .anime-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .anime-card-img {
+    width: 42px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: var(--surface2);
+  }
+  .anime-card .info { flex: 1; min-width: 0; }
+  .anime-card .title {
+    font-weight: 500;
+    margin-bottom: 3px;
+    word-break: break-word;
+  }
+  .anime-card .meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .badge.ongoing  { background: #14532d; color: var(--green); }
+  .badge.upcoming { background: #1e3a5f; color: var(--blue); }
+  .badge.finished { background: #1e1e2e; color: var(--slate); }
+  .badge.delayed  { background: #431407; color: var(--yellow); }
+  .badge.unknown  { background: #1e1e2e; color: var(--text-muted); }
+  .badge.trusted  { background: #14532d; color: var(--green); }
+  .badge.normal   { background: #1e1e2e; color: var(--slate); }
+  .badge.remake   { background: #450a0a; color: var(--red); }
+
+  .track-btn { flex-shrink: 0; }
+  .inline-msg { font-size: 11px; margin-top: 3px; }
+  .inline-msg.ok  { color: var(--green); }
+  .inline-msg.err { color: var(--red); }
+
+  /* Torrent table */
+  .torrent-table {
+    width: 100%;
+    min-width: 500px;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .torrent-table th {
+    position: relative;
+    text-align: left;
+    color: var(--text-muted);
+    padding: 4px 6px;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+    overflow: hidden;
+  }
+  .torrent-table th.sortable { cursor: pointer; }
+  .torrent-table th.sortable:hover { color: var(--text); }
+  .sort-arrow { margin-left: 3px; font-size: 10px; opacity: 0.6; }
+  .torrent-table td {
+    padding: 6px 6px;
+    border-bottom: 1px solid #1a1a2e;
+    vertical-align: middle;
+  }
+  .torrent-table tr:hover td { background: var(--surface2); }
+  .torrent-table .name-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .col-resize-handle {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    z-index: 1;
+  }
+  .col-resize-handle:hover, .col-resize-handle.resizing { background: var(--accent); opacity: 0.7; }
+  .torrent-table .seeders { color: var(--green); font-weight: 500; }
+  .torrent-table .leechers { color: var(--red); }
+
+  a.magnet-link { color: var(--accent); text-decoration: none; font-size: 11px; }
+  a.magnet-link:hover { color: var(--accent-hover); }
+
+  .add-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-banner {
+    background: #450a0a;
+    border: 1px solid var(--red);
+    color: var(--red);
+    padding: 8px 12px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+
+  .wl-title-btn {
+    background: none; border: none; padding: 0;
+    color: var(--accent); cursor: pointer; font-size: 13px; font-weight: 500;
+    text-align: left; font-family: inherit;
+  }
+  .wl-title-btn:hover { color: var(--accent-hover); text-decoration: underline; }
+  .sub-tag {
+    display: inline-block; padding: 1px 6px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 3px; font-size: 11px;
+    color: var(--text-muted); margin-right: 3px;
+  }
+  .wl-subs { margin-top: 3px; display: flex; align-items: center; flex-wrap: wrap; gap: 3px; }
+  .wl-edit-row { margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+  .wl-edit-row input { flex: 1; min-width: 0; font-size: 12px; }
+
+  .type-toggle { display: flex; gap: 0; margin-bottom: 12px; }
+  .type-toggle button {
+    border-radius: 0; flex: 1; background: var(--surface2);
+    color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .type-toggle button:first-child { border-radius: 5px 0 0 5px; }
+  .type-toggle button:last-child  { border-radius: 0 5px 5px 0; border-left: none; }
+  .type-toggle button.active { background: var(--accent); color: #fff; }
+  .badge.anime-badge { background: #1e1b4b; color: #818cf8; }
+  .badge.manga-badge { background: #431407; color: #fb923c; }
+
+  /* ── Watchlist ── */
+  .watchlist-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    border-right: 1px solid var(--border);
+  }
+  .watchlist-item:last-child { border-bottom: none; }
+  .watchlist-item .wl-title { flex: 1; font-size: 13px; }
+  .watchlist-item .remove-btn { padding: 3px 10px; font-size: 12px; }
+  .watchlist-item.deprecated .info { opacity: 0.45; }
+  .watchlist-item.deprecated .wl-title-text { font-size: 13px; font-weight: 500; }
+  .section-sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  /* ── Toast ── */
+  #daemon-toggle {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1000;
+    padding: 12px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  #toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 9999;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    max-width: 320px;
+    animation: toast-in 0.15s ease;
+  }
+  .toast.error { border-color: var(--red);   color: var(--red); }
+  .toast.ok    { border-color: var(--green); color: var(--green); }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>lydarr</h1>
+
+  <span style="display:flex;align-items:center;gap:6px"><span class="dot" id="rt-dot"></span><span class="label-muted">Transmission</span></span>
+  <span style="display:flex;align-items:center;gap:6px"><span class="dot" id="daemon-dot"></span><span class="label-muted">Daemon</span></span>
+
+  <div class="spacer"></div>
+
+  <div class="header-right">
+    <div style="text-align:right;line-height:1.3">
+      <div id="clock-time" style="font-size:14px;font-weight:600;font-variant-numeric:tabular-nums"></div>
+      <div id="clock-tz" style="font-size:11px;color:var(--text-muted)"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Anime Search -->
+  <div class="panel" style="flex:1">
+    <h2>Media Search</h2>
+    <div class="type-toggle">
+      <button id="toggle-anime" class="active" onclick="setSearchType('anime')">Anime</button>
+      <button id="toggle-manga" onclick="setSearchType('manga')">Manga</button>
+    </div>
+    <div class="row">
+      <div class="search-wrap">
+        <input type="text" id="anime-q" placeholder="Search title..." onkeydown="if(event.key==='Enter')searchAnime()">
+        <button class="clear-btn" onclick="clearAnimeSearch()" tabindex="-1" title="Clear">✕</button>
+      </div>
+      <button onclick="searchAnime()">Search</button>
+    </div>
+    <div id="anime-error"></div>
+    <div id="anime-results" class="results"></div>
+  </div>
+
+  <div class="panel-resize-handle" data-min-left="200" data-min-right="250"></div>
+
+  <!-- MIDDLE: Watchlist -->
+  <div class="panel" style="flex:1">
+    <h2>Watchlist <button class="secondary" style="font-size:11px;padding:2px 8px" onclick="loadWatchlist()">↺</button></h2>
+    <div id="watchlist-results" class="results"></div>
+  </div>
+
+  <div class="panel-resize-handle" data-min-left="250" data-min-right="350"></div>
+
+  <!-- RIGHT: Torrent Browser -->
+  <div class="panel" style="flex:1.5">
+    <h2>Torrent Browser</h2>
+    <div class="row">
+      <div class="search-wrap">
+        <input type="text" id="torrent-q" placeholder="Anime title..." onkeydown="if(event.key==='Enter')searchTorrents()">
+        <button class="clear-btn" onclick="clearTorrentSearch()" tabindex="-1" title="Clear">✕</button>
+      </div>
+      <input type="number" id="torrent-ep" placeholder="Ep #" min="1">
+      <select id="torrent-site">
+        <option value="nyaa_si">Nyaa.si</option>
+        <option value="sukebei">Sukebei</option>
+        <option value="nyaa_land">Nyaa.land</option>
+      </select>
+      <button onclick="searchTorrents()">Search</button>
+    </div>
+    <div class="filters">
+      <label><input type="checkbox" id="hevc-only" onchange="applyFilters()"> HEVC/x265 only</label>
+      <label>Type:
+        <select id="type-filter" onchange="applyFilters()" style="margin-left:4px">
+          <option value="">All</option>
+          <option value="trusted">Trusted</option>
+          <option value="normal">Normal</option>
+          <option value="remake">Remake</option>
+        </select>
+      </label>
+    </div>
+    <div id="torrent-error"></div>
+    <div id="torrent-results" class="results"></div>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let allTorrents = [];
+let daemonRunning = false;
+let transmissionOnline = false;
+let searchType = 'anime';
+let sortCol = 'seeders';
+let sortAsc = false;
+const _colWidths    = { name: 300, size: 75, seeders: 55, type: 80, magnet: 72, actions: 90 };
+const _colMinWidths = { name:  80, size: 50, seeders: 45, type: 55, magnet: 70, actions: 85 };
+let _colWidthsInit = false;
+const tabState = {
+  anime: { query: '', items: null },
+  manga: { query: '', items: null },
+};
+
+// ── Polling ────────────────────────────────────────────────────────────────
+function _updateToggleBtn() {
+  const active = daemonRunning || transmissionOnline;
+  const btn = document.getElementById('daemon-toggle');
+  btn.textContent = active ? 'Stop' : 'Start';
+  btn.className = active ? 'danger' : '';
+}
+
+async function pollRtorrent() {
+  try {
+    const r = await fetch('/api/rtorrent/status');
+    const d = await r.json();
+    transmissionOnline = d.online;
+    document.getElementById('rt-dot').className = 'dot ' + (d.online ? 'green' : 'red');
+    _updateToggleBtn();
+  } catch {}
+}
+
+async function pollDaemon() {
+  try {
+    const r = await fetch('/api/daemon/status');
+    const d = await r.json();
+    daemonRunning = d.running;
+    document.getElementById('daemon-dot').className = 'dot ' + (d.running ? 'green' : 'red');
+    _updateToggleBtn();
+  } catch {}
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const year = d.getFullYear();
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12 || 12;
+  return `${month}/${day}/${year}, ${h}:${pad(d.getMinutes())} ${ampm}`;
+}
+
+function tzOffset() {
+  const off = -new Date().getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const h = Math.floor(Math.abs(off) / 60);
+  const m = Math.abs(off) % 60;
+  return 'UTC' + sign + h + (m ? ':' + String(m).padStart(2, '0') : '');
+}
+
+function tickClock() {
+  const now = new Date();
+  document.getElementById('clock-time').textContent = fmtDate(now.toISOString());
+  document.getElementById('clock-tz').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone + ' (' + tzOffset() + ')';
+}
+
+async function toggleDaemon() {
+  const btn = document.getElementById('daemon-toggle');
+  btn.disabled = true;
+  document.getElementById('rt-dot').className = 'dot grey';
+  try {
+    const active = daemonRunning || transmissionOnline;
+    const daemonUrl = active ? '/api/daemon/stop' : '/api/daemon/start';
+    const daemonRes = await fetch(daemonUrl, { method: 'POST' });
+    const daemonData = await daemonRes.json();
+    if (!daemonData.ok && !active) {
+      showToast(daemonData.reason || 'Could not start daemon');
+      await pollRtorrent();
+      await pollDaemon();
+      return;
+    }
+    const txUrl = active ? '/api/transmission/stop' : '/api/transmission/start';
+    await fetch(txUrl, { method: 'POST' });
+    await pollRtorrent();
+    await pollDaemon();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Anime Search ───────────────────────────────────────────────────────────
+function setSearchType(type) {
+  if (searchType === type) return;
+  tabState[searchType].query = document.getElementById('anime-q').value;
+  searchType = type;
+  document.getElementById('toggle-anime').classList.toggle('active', type === 'anime');
+  document.getElementById('toggle-manga').classList.toggle('active', type === 'manga');
+  const state = tabState[type];
+  document.getElementById('anime-q').value = state.query;
+  document.getElementById('anime-error').innerHTML = '';
+  if (state.items !== null) {
+    renderAnimeResults(state.items);
+  } else {
+    document.getElementById('anime-results').innerHTML = '';
+  }
+}
+
+function clearAnimeSearch() {
+  document.getElementById('anime-q').value = '';
+  document.getElementById('anime-q').focus();
+  tabState[searchType].query = '';
+  tabState[searchType].items = null;
+  document.getElementById('anime-results').innerHTML = '';
+  document.getElementById('anime-error').innerHTML = '';
+}
+
+async function searchAnime() {
+  const q = document.getElementById('anime-q').value.trim();
+  if (!q) return;
+  const errEl = document.getElementById('anime-error');
+  const resEl = document.getElementById('anime-results');
+  errEl.innerHTML = '';
+  resEl.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await fetch('/api/anime/search?q=' + encodeURIComponent(q) + '&type=' + searchType);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    tabState[searchType].query = q;
+    tabState[searchType].items = data;
+    renderAnimeResults(data);
+  } catch (e) {
+    errEl.innerHTML = `<div class="error-banner">${esc(e.message)}</div>`;
+    resEl.innerHTML = '';
+  }
+}
+
+function statusBadge(status) {
+  const cls = (status || 'unknown').toLowerCase();
+  return `<span class="badge ${cls}">${status || 'Unknown'}</span>`;
+}
+
+const _STATUS_PRIORITY = { releasing: 0, not_yet_released: 1, hiatus: 2, unknown: 3, finished: 4, cancelled: 5 };
+
+function renderAnimeResults(items) {
+  const el = document.getElementById('anime-results');
+  if (!items.length) { el.innerHTML = '<p class="empty-msg">No results.</p>'; return; }
+  const sorted = [...items].sort((a, b) => {
+    const pa = _STATUS_PRIORITY[(a.status || '').toLowerCase()] ?? 3;
+    const pb = _STATUS_PRIORITY[(b.status || '').toLowerCase()] ?? 3;
+    return pa - pb;
+  });
+  el._results = sorted;
+  el.innerHTML = sorted.map((a, i) => {
+    const countText = a.type === 'manga'
+      ? (a.chapters ? `${a.chapters} ch` : 'ongoing')
+      : (a.episodes ? `${a.episodes} eps` : '');
+    const nextText = a.next_airing_episode && a.next_airing_at
+      ? `ep ${a.next_airing_episode} airs ${fmtDate(new Date(a.next_airing_at * 1000).toISOString())}`
+      : '';
+    const meta = [countText, nextText].filter(Boolean).join(' · ');
+    const imgHtml = a.cover_image
+      ? `<img class="anime-card-img" src="${esc(a.cover_image)}" alt="">`
+      : `<div class="anime-card-img"></div>`;
+    return `
+    <div class="anime-card">
+      ${imgHtml}
+      <div class="info">
+        <div class="title">${esc(a.title)}</div>
+        <div class="meta">${statusBadge(a.status)}${meta ? `<span>${esc(meta)}</span>` : ''}</div>
+      </div>
+      <button class="track-btn secondary" onclick="trackAnime(${i}, this)">Track</button>
+    </div>`;
+  }).join('');
+}
+
+async function trackAnime(idx, btn) {
+  const item = document.getElementById('anime-results')._results?.[idx];
+  if (!item) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/anime/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: item.title, type: searchType }),
+    });
+    const d = await r.json();
+    if (d.added) {
+      btn.textContent = 'Added';
+      showToast('Added: ' + item.title, 'ok');
+      loadWatchlist();
+    } else {
+      btn.disabled = false;
+      showToast(d.reason || 'Not added');
+    }
+  } catch (e) {
+    btn.disabled = false;
+    showToast('Error: ' + e.message);
+  }
+}
+
+function clearTorrentSearch() {
+  document.getElementById('torrent-q').value = '';
+  document.getElementById('torrent-q').focus();
+  allTorrents = [];
+  document.getElementById('torrent-results').innerHTML = '';
+  document.getElementById('torrent-error').innerHTML = '';
+}
+
+// ── Torrent Search ─────────────────────────────────────────────────────────
+async function searchTorrents() {
+  const q = document.getElementById('torrent-q').value.trim();
+  if (!q) return;
+  const ep = document.getElementById('torrent-ep').value;
+  const site = document.getElementById('torrent-site').value;
+  const errEl = document.getElementById('torrent-error');
+  const resEl = document.getElementById('torrent-results');
+  errEl.innerHTML = '';
+  resEl.innerHTML = '<span class="spinner"></span>';
+  let url = '/api/torrents/search?q=' + encodeURIComponent(q) + '&site=' + site;
+  if (ep) url += '&ep=' + encodeURIComponent(ep);
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(await r.text());
+    allTorrents = await r.json();
+    applyFilters();
+  } catch (e) {
+    errEl.innerHTML = `<div class="error-banner">${esc(e.message)}</div>`;
+    resEl.innerHTML = '';
+  }
+}
+
+function parseSize(s) {
+  const m = String(s).match(/([\d.]+)\s*(B|KiB|MiB|GiB|TiB)/i);
+  if (!m) return 0;
+  const u = {b:1, kib:1024, mib:1024**2, gib:1024**3, tib:1024**4};
+  return parseFloat(m[1]) * (u[m[2].toLowerCase()] || 1);
+}
+
+function applySort(items) {
+  if (!sortCol) return items;
+  return [...items].sort((a, b) => {
+    let av, bv;
+    if      (sortCol === 'name')    { av = a.name.toLowerCase(); bv = b.name.toLowerCase(); }
+    else if (sortCol === 'size')    { av = parseSize(a.size);    bv = parseSize(b.size); }
+    else if (sortCol === 'seeders') { av = a.seeders;            bv = b.seeders; }
+    else if (sortCol === 'type')    { av = a.type;               bv = b.type; }
+    else return 0;
+    if (av < bv) return sortAsc ? -1 : 1;
+    if (av > bv) return sortAsc ? 1 : -1;
+    return 0;
+  });
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = col === 'name' || col === 'type'; }
+  applyFilters();
+}
+
+function applyFilters() {
+  const hevcOnly = document.getElementById('hevc-only').checked;
+  const typeFilter = document.getElementById('type-filter').value;
+  let filtered = allTorrents;
+  if (hevcOnly) filtered = filtered.filter(t => /hevc|x265/i.test(t.name));
+  if (typeFilter) filtered = filtered.filter(t => t.type === typeFilter);
+  renderTorrents(applySort(filtered));
+}
+
+function typeBadge(type) {
+  const map = { trusted: 'Trusted', normal: 'Normal', remake: 'Remake' };
+  const safe = map[type] ? type : 'normal';
+  return `<span class="badge ${safe}">${map[safe]}</span>`;
+}
+
+function renderTorrents(items) {
+  const el = document.getElementById('torrent-results');
+  if (!items.length) { el.innerHTML = '<p class="empty-msg">No results.</p>'; return; }
+  if (!_colWidthsInit) {
+    const w = el.offsetWidth;
+    if (w > 0) {
+      const total = Object.values(_colWidths).reduce((a, b) => a + b, 0);
+      const scale = w / total;
+      for (const k of Object.keys(_colWidths)) _colWidths[k] = Math.max(40, Math.floor(_colWidths[k] * scale));
+      _colWidthsInit = true;
+    }
+  }
+  const rows = items.map((t, i) => `
+    <tr>
+      <td class="name-cell" title="${esc(t.name)}">${esc(t.name)}</td>
+      <td>${esc(t.size)}</td>
+      <td class="seeders">${t.seeders}</td>
+      <td>${typeBadge(t.type)}</td>
+      <td>${t.magnet ? `<a class="magnet-link" href="${esc(t.magnet)}" title="magnet">⋯magnet</a>` : '—'}</td>
+      <td>
+        <button class="add-btn secondary" onclick="addTorrent(${i}, this)">Add</button>
+        <span id="torrent-msg-${i}" class="inline-msg"></span>
+      </td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <table class="torrent-table">
+      <thead><tr>
+        <th class="sortable" style="width:${_colWidths.name}px"    onclick="sortBy('name')"   >Name    <span class="sort-arrow" id="sa-name"></span><div class="col-resize-handle" data-col="name"></div></th>
+        <th class="sortable" style="width:${_colWidths.size}px"    onclick="sortBy('size')"   >Size    <span class="sort-arrow" id="sa-size"></span><div class="col-resize-handle" data-col="size"></div></th>
+        <th class="sortable" style="width:${_colWidths.seeders}px" onclick="sortBy('seeders')">Seeds   <span class="sort-arrow" id="sa-seeders"></span><div class="col-resize-handle" data-col="seeders"></div></th>
+        <th class="sortable" style="width:${_colWidths.type}px"    onclick="sortBy('type')"   >Type    <span class="sort-arrow" id="sa-type"></span><div class="col-resize-handle" data-col="type"></div></th>
+        <th style="width:${_colWidths.magnet}px">Magnet<div class="col-resize-handle" data-col="magnet"></div></th>
+        <th style="width:${_colWidths.actions}px"></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  el._filtered = items;
+  // Update sort arrows
+  for (const col of ['name', 'size', 'seeders', 'type']) {
+    const el2 = document.getElementById('sa-' + col);
+    if (el2) el2.textContent = sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : '';
+  }
+}
+
+async function addTorrent(idx, btn) {
+  const el = document.getElementById('torrent-results');
+  const items = el._filtered || [];
+  const t = items[idx];
+  if (!t || !t.magnet) {
+    showToast('No magnet link available');
+    return;
+  }
+  btn.disabled = true;
+  const msgEl = document.getElementById('torrent-msg-' + idx);
+  msgEl.textContent = '…';
+  try {
+    const r = await fetch('/api/torrents/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ magnet: t.magnet }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msgEl.className = 'inline-msg ok';
+      msgEl.textContent = '✓';
+      btn.textContent = 'Added';
+    } else {
+      showToast(d.error || 'Failed to add torrent');
+      msgEl.textContent = '';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    showToast('Network error');
+    msgEl.textContent = '';
+    btn.disabled = false;
+  }
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────
+async function loadWatchlist() {
+  const el = document.getElementById('watchlist-results');
+  try {
+    const r = await fetch('/api/anime/list');
+    const entries = await r.json();
+    if (!entries.length) {
+      el.innerHTML = '<p class="empty-msg">No anime tracked.</p>';
+      return;
+    }
+    const sorted = [...entries].sort((a, b) => (a.deprecated ? 1 : 0) - (b.deprecated ? 1 : 0));
+    el.innerHTML = sorted.map((e, i) => {
+      const typeBadgeHtml = `<span class="badge ${e.type === 'manga' ? 'manga-badge' : 'anime-badge'}">${esc(e.type.toUpperCase())}</span>`;
+      const tags = e.submitters.map(s => `<span class="sub-tag">${esc(s)}</span>`).join('');
+      const subsLabel = e.submitters.length ? tags : '<span class="label-muted" style="font-size:11px">all uploaders</span>';
+      const chText = e.type === 'manga' && e.last_chapter > 0 ? `<span class="label-muted" style="font-size:11px">ch.${String(e.last_chapter).padStart(3,'0')} tracked</span>` : '';
+      if (e.deprecated) {
+        return `
+      <div class="watchlist-item deprecated" id="wl-item-${i}">
+        <div class="info" style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">${typeBadgeHtml}<span class="wl-title-text">${esc(e.title)}</span></div>
+          <div class="wl-subs">${subsLabel}${chText}
+            <button class="secondary" style="padding:1px 6px;font-size:11px" disabled>✎</button><span id="wl-status-${i}" class="label-muted" style="font-size:11px"></span>
+          </div>
+        </div>
+        <button class="success" style="padding:3px 10px;font-size:12px" data-title="${esc(e.title)}" onclick="reactivateAnime(this)">Reactivate</button>
+        <button class="remove-btn danger" data-title="${esc(e.title)}" onclick="removeAnime(this)">Remove</button>
+      </div>`;
+      }
+      return `
+      <div class="watchlist-item" id="wl-item-${i}">
+        <div class="info" style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">${typeBadgeHtml}<button class="wl-title-btn" data-title="${esc(e.title)}" data-type="${esc(e.type)}" data-searchname="${esc(e.search_name || '')}" onclick="searchFromWatchlist(this)">${esc(e.title)}</button></div>
+          <div class="wl-subs">${subsLabel}${chText}
+            <button class="secondary" style="padding:1px 6px;font-size:11px" onclick="toggleEditSubs(${i})">✎</button><span id="wl-status-${i}" class="label-muted" style="font-size:11px"></span>
+          </div>
+          <div id="wl-edit-${i}" style="display:none;flex-direction:column;gap:5px;margin-top:6px">
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Search name (Nyaa override)</div>
+              <input type="text" id="wl-sn-input-${i}" style="width:100%;font-size:12px" placeholder="Leave blank to use title" value="${esc(e.search_name || '')}">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Submitters</div>
+              <input type="text" id="wl-sub-input-${i}" style="width:100%;font-size:12px" placeholder="SubsPlease, Erai-raws" value="${esc(e.submitters.join(', '))}">
+            </div>
+            <div style="display:flex;gap:6px">
+              <button data-title="${esc(e.title)}" onclick="saveSubs(${i}, this)" style="padding:3px 10px;font-size:12px">Save</button>
+              <button class="secondary" onclick="toggleEditSubs(${i})" style="padding:3px 10px;font-size:12px">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <button class="secondary" style="padding:3px 10px;font-size:12px" data-title="${esc(e.title)}" onclick="deprecateAnime(this)">Deprecate</button>
+        <button class="remove-btn danger" data-title="${esc(e.title)}" onclick="removeAnime(this)">Remove</button>
+      </div>`;
+    }).join('');
+    sorted.forEach((e, i) => fetchWatchlistStatus(e, i));
+  } catch (e) {
+    el.innerHTML = '<p class="empty-msg err">Error loading watchlist.</p>';
+  }
+}
+
+async function fetchWatchlistStatus(entry, idx) {
+  const el = document.getElementById('wl-status-' + idx);
+  if (!el) return;
+  try {
+    const r = await fetch('/api/anime/status?title=' + encodeURIComponent(entry.title) + '&type=' + entry.type);
+    const d = await r.json();
+    if (!d.status) return;
+    const s = d.status.toLowerCase();
+    if (s === 'finished' || s === 'cancelled') {
+      el.textContent = 'Completed';
+    } else if ((s === 'releasing' || s === 'ongoing') && d.next_airing_at && d.next_airing_episode) {
+      el.textContent = 'Ep ' + d.next_airing_episode + ' · ' + fmtDate(new Date(d.next_airing_at * 1000).toISOString());
+    } else if (s === 'not_yet_released') {
+      el.textContent = 'Upcoming';
+    } else if (s === 'hiatus') {
+      el.textContent = 'Hiatus';
+    } else {
+      el.textContent = d.status;
+    }
+  } catch { /* silently ignore */ }
+}
+
+function searchFromWatchlist(btn) {
+  const title = btn.dataset.title;
+  const type = btn.dataset.type || 'anime';
+  const item = btn.closest('.watchlist-item');
+  const snInput = item && item.querySelector('[id^="wl-sn-input-"]');
+  const searchName = (snInput && snInput.value.trim()) || btn.dataset.searchname || title;
+  setSearchType(type);
+  document.getElementById('torrent-q').value = searchName;
+  document.getElementById('torrent-ep').value = '';
+  searchTorrents();
+}
+
+function toggleEditSubs(idx) {
+  const row = document.getElementById('wl-edit-' + idx);
+  row.style.display = row.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function saveSubs(idx, btn) {
+  const title = btn.dataset.title;
+  const subInput = document.getElementById('wl-sub-input-' + idx);
+  const snInput = document.getElementById('wl-sn-input-' + idx);
+  const submitters = subInput.value.split(',').map(s => s.trim()).filter(Boolean);
+  const search_name = snInput ? snInput.value.trim() : '';
+  try {
+    await fetch('/api/anime/submitters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, submitters, search_name }),
+    });
+    toggleEditSubs(idx);
+    loadWatchlist();
+  } catch { /* silently ignore */ }
+}
+
+async function deprecateAnime(btn) {
+  const title = btn.dataset.title;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/anime/deprecate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    const d = await r.json();
+    if (d.ok) { loadWatchlist(); } else { btn.disabled = false; }
+  } catch { btn.disabled = false; }
+}
+
+async function reactivateAnime(btn) {
+  const title = btn.dataset.title;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/anime/reactivate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    const d = await r.json();
+    if (d.ok) { loadWatchlist(); } else { btn.disabled = false; }
+  } catch { btn.disabled = false; }
+}
+
+async function removeAnime(btn) {
+  const title = btn.dataset.title;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/anime/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, type: searchType }),
+    });
+    const d = await r.json();
+    if (d.removed) {
+      btn.closest('.watchlist-item').remove();
+      const el = document.getElementById('watchlist-results');
+      if (!el.children.length) el.innerHTML = '<p class="empty-msg">No anime tracked.</p>';
+    } else {
+      btn.disabled = false;
+    }
+  } catch {
+    btn.disabled = false;
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'error') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+function _initPanelResize() {
+  let _panelResized = false;
+  let _lastMainW = 0;
+  const _panelMins = [200, 250, 350];
+
+  document.addEventListener('mousedown', e => {
+    const handle = e.target.closest('.panel-resize-handle');
+    if (!handle) return;
+    e.preventDefault();
+    const left = handle.previousElementSibling;
+    const right = handle.nextElementSibling;
+    if (!left || !right) return;
+    const startX = e.pageX;
+    const startLeft = left.offsetWidth;
+    const startRight = right.offsetWidth;
+    const total = startLeft + startRight;
+    const minLeft  = parseInt(handle.dataset.minLeft  || 150);
+    const minRight = parseInt(handle.dataset.minRight || 150);
+    handle.classList.add('resizing');
+    function onMove(ev) {
+      const delta = ev.pageX - startX;
+      let newLeft  = startLeft  + delta;
+      let newRight = startRight - delta;
+      if (newLeft < minLeft)        { newLeft = minLeft;         newRight = total - minLeft; }
+      else if (newRight < minRight) { newRight = minRight;       newLeft  = total - minRight; }
+      left.style.flex  = `0 0 ${newLeft}px`;
+      right.style.flex = `0 0 ${newRight}px`;
+    }
+    function onUp() {
+      handle.classList.remove('resizing');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      _panelResized = true;
+      _lastMainW = document.querySelector('main').offsetWidth;
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  window.addEventListener('resize', () => {
+    if (!_panelResized || window.innerWidth <= 850) return;
+    const main = document.querySelector('main');
+    if (!main) return;
+    const newW = main.offsetWidth;
+    if (!_lastMainW || newW === _lastMainW) { _lastMainW = newW; return; }
+    const scale = newW / _lastMainW;
+    const panels = [...main.children].filter(el => el.classList.contains('panel'));
+    panels.forEach((p, i) => {
+      const w = Math.max(_panelMins[i] || 150, Math.round(p.offsetWidth * scale));
+      p.style.flex = `0 0 ${w}px`;
+    });
+    _lastMainW = newW;
+  });
+}
+
+function _initColResize() {
+  let dragTh = null, startX = 0, startW = 0;
+  document.addEventListener('click', e => {
+    if (e.target.closest('.col-resize-handle')) e.stopPropagation();
+  }, true);
+  document.addEventListener('mousedown', e => {
+    const handle = e.target.closest('.col-resize-handle');
+    if (!handle) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragTh = handle.closest('th');
+    startX = e.pageX;
+    startW = dragTh.offsetWidth;
+    handle.classList.add('resizing');
+    const col = handle.dataset.col;
+    function onMove(ev) {
+      const w = Math.max(_colMinWidths[col] ?? 40, startW + (ev.pageX - startX));
+      dragTh.style.width = w + 'px';
+      if (col) _colWidths[col] = w;
+    }
+    function onUp() {
+      document.querySelectorAll('.col-resize-handle.resizing').forEach(h => h.classList.remove('resizing'));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+_initPanelResize();
+_initColResize();
+pollRtorrent();
+pollDaemon();
+loadWatchlist();
+tickClock();
+setInterval(tickClock, 1000);
+setInterval(pollRtorrent, 10000);
+setInterval(pollDaemon, 5000);
+</script>
+<button id="daemon-toggle" onclick="toggleDaemon()">—</button>
+<div id="toast-container"></div>
+</body>
+</html>

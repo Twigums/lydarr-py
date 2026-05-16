@@ -1,0 +1,140 @@
+"""Start the daemon and optional web server; handles CLI args."""
+import argparse
+import asyncio
+import os
+import sys
+from collections.abc import Coroutine
+from datetime import datetime, timezone
+from typing import Any
+
+from lydarr.config import AppConfig, load_config
+from lydarr.file_manager import MediaState, read_entries
+from lydarr.torrent_client import wait_for_client
+from lydarr.tracker import track_media, _next_episode_time
+
+
+def _fmt_utc(dt: datetime) -> str:
+    off = dt.utcoffset()
+    hours = int(off.total_seconds() // 3600) if off is not None else 0
+    sign = "+" if hours >= 0 else "-"
+    return f"{dt.strftime('%Y-%m-%d %H:%M')} UTC{sign}{abs(hours)}"
+
+
+async def _nyaa_has_results(nyaa_name: str) -> bool:
+    from nyaa.search import search
+    from nyaa.types import TorrentSite, SearchParams, SortField, SortOrder
+    try:
+        results = await search(TorrentSite.NYAA_SI, SearchParams(
+            keyword = nyaa_name,
+            filters = 0,
+            category = 1,
+            subcategory = 2,
+            sort = SortField.SEEDERS,
+            order = SortOrder.DESC,
+        ))
+        return bool(results)
+    except Exception:
+        return True
+
+
+async def _debug_report(cfg: AppConfig) -> None:
+    from animeschedule.schedule import fetch_by_name
+    from animeschedule.types import AirStatus
+
+    entries = [e for e in read_entries(cfg.anime_file) if e.media_type == "anime" and not e.deprecated]
+    if not entries:
+        print("No active anime entries.")
+        return
+
+    now = datetime.now(tz = timezone.utc)
+    for entry in entries:
+        try:
+            detail, episodes = await fetch_by_name(entry.title)
+            if detail.status == AirStatus.ONGOING:
+                nxt = _next_episode_time(episodes, now)
+                if nxt:
+                    ep_num, air_time = nxt
+                    print(f"  {entry.title}: ep {ep_num:02d} at {_fmt_utc(air_time)}")
+                    nyaa_name = entry.search_name or entry.title
+                    if not await _nyaa_has_results(nyaa_name):
+                        print(f"    ! No Nyaa results for \"{nyaa_name}\"")
+                        if not entry.search_name:
+                            print(f"    -> Use the web UI to search and set a search name")
+                else:
+                    print(f"  {entry.title}: Ongoing (no future episode scheduled)")
+            else:
+                print(f"  {entry.title}: {detail.status.value}")
+        except Exception as exc:
+            print(f"  {entry.title}: error — {exc}")
+
+
+async def _run(web_only: bool, host: str, port: int, debug: bool) -> None:
+    cfg = load_config()
+
+    if debug:
+        await _debug_report(cfg)
+        return
+
+    if cfg.default_dir_set:
+        print(f"Downloads will go to: $LYDARR_DEFAULT_DIR = {cfg.default_dir}")
+    else:
+        print(f"$LYDARR_DEFAULT_DIR unset. Defaulting to {cfg.default_dir}")
+
+    if web_only:
+        from lydarr.web.app import create_app
+        import uvicorn
+
+        state = MediaState(read_entries(cfg.anime_file))
+        app = create_app(cfg, state)
+        server = uvicorn.Server(uvicorn.Config(app, host = host, port = port))
+        await server.serve()
+        return
+
+    await wait_for_client(cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass)
+
+    entries = read_entries(cfg.anime_file)
+    if not entries:
+        print("`anime.toml` is empty — add [[media]] entries or use --web-only")
+        return
+
+    titles = ", ".join(e.title for e in entries)
+    print(f"Tracking {len(entries)} title(s): {titles}")
+    state = MediaState(entries)
+
+    tasks: list[Coroutine[Any, Any, None]] = [track_media(cfg, state, entry) for entry in entries]
+
+    if os.environ.get("LYDARR_WEB") == "1":
+        from lydarr.web.app import create_app
+        import uvicorn
+
+        app = create_app(cfg, state)
+        server = uvicorn.Server(uvicorn.Config(app, host = host, port = port))
+        tasks.append(server.serve())
+
+    await asyncio.gather(*tasks)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description = "lydarr — anime/manga torrent tracker daemon")
+    parser.add_argument("--web-only", action = "store_true",
+                        help = "start web UI only without daemon tracking")
+    parser.add_argument("--host", default = None,
+                        help = "web UI bind address (default: 0.0.0.0, or $LYDARR_WEB_HOST)")
+    parser.add_argument("--port", type = int, default = None,
+                        help = "web UI port (default: 8080, or $LYDARR_WEB_PORT)")
+    parser.add_argument("--debug", action = "store_true",
+                        help = "print each tracked anime's next episode time (UTC) and exit")
+    args = parser.parse_args()
+
+    host = args.host if args.host is not None else os.environ.get("LYDARR_WEB_HOST", "0.0.0.0")
+    port = args.port if args.port is not None else int(os.environ.get("LYDARR_WEB_PORT", "8080"))
+
+    try:
+        asyncio.run(_run(web_only = args.web_only, host = host, port = port, debug = args.debug))
+    except KeyboardInterrupt:
+        print("\nShutting down.")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

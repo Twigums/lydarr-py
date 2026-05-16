@@ -161,6 +161,46 @@ async def test_find_by_title_empty_results():
 
 
 @pytest.mark.asyncio
+async def test_find_by_title_colon_strip_fallback():
+    """Full colon-subtitle query returns nothing; retry with pre-colon portion succeeds."""
+    empty = {"Page": {"media": []}}
+    hit = {"Page": {"media": [SOLO_LEVELING_MEDIA]}}
+    call_count = 0
+
+    async def mock_graphql(query, variables):
+        nonlocal call_count
+        call_count += 1
+        return empty if call_count == 1 else hit
+
+    with patch("anilist.search.graphql", side_effect = mock_graphql):
+        result = await find_by_title(
+            "Solo Leveling Season 2: Arise from the Shadow", MediaType.ANIME
+        )
+
+    assert call_count == 2
+    assert result is not None
+    assert result.id == 153406
+
+
+@pytest.mark.asyncio
+async def test_find_by_title_no_colon_no_retry():
+    """Titles without a colon do not trigger a second query."""
+    empty = {"Page": {"media": []}}
+    call_count = 0
+
+    async def mock_graphql(query, variables):
+        nonlocal call_count
+        call_count += 1
+        return empty
+
+    with patch("anilist.search.graphql", side_effect = mock_graphql):
+        result = await find_by_title("Nonexistent Title", MediaType.ANIME)
+
+    assert call_count == 1
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_graphql_http_error():
     with patch("anilist.http.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()

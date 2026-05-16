@@ -63,8 +63,8 @@ async def _download_all_episodes(
 
 async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> bool:
     name = entry.title
-    search_name = entry.search_name or entry.title
-    info = await find_by_title(search_name, MediaType.ANIME)
+    nyaa_name = entry.search_name or entry.title
+    info = await find_by_title(name, MediaType.ANIME)
     if info is None:
         _log(name, "Not found on AniList. Retrying in 6h.")
         await asyncio.sleep(6 * 3600)
@@ -78,7 +78,7 @@ async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> b
                 await asyncio.sleep(6 * 3600)
                 return True
             _log(name, f"Finished. Downloading eps 1..{total}.")
-            await _download_all_episodes(cfg, search_name, total, entry.submitters)
+            await _download_all_episodes(cfg, nyaa_name, total, entry.submitters)
             await state.remove(cfg.anime_file, name)
             _log(name, "Done. Removed from anime.toml.")
             return False
@@ -93,7 +93,7 @@ async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> b
             trigger = air_time + timedelta(minutes = 30)
             _log(name, f"Next ep {_pad(ep_num)} airs at {air_time}. Searching at {trigger}.")
             await _sleep_until(trigger)
-            await _wait_and_add_episode(cfg, search_name, ep_num, entry.submitters)
+            await _wait_and_add_episode(cfg, nyaa_name, ep_num, entry.submitters)
             return True
 
         case MediaStatus.NOT_YET_RELEASED | MediaStatus.HIATUS:

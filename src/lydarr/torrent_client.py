@@ -35,7 +35,7 @@ async def _rpc(url: str, user: str | None, password: str | None, method: str, ar
 async def is_client_up(url: str, user: str | None, password: str | None) -> bool:
     try:
         r = await _rpc(url, user, password, "session-get")
-        return r.status_code == 200
+        return r.status_code in (200, 401, 409)
     except Exception:
         return False
 

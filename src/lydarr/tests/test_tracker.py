@@ -104,7 +104,7 @@ async def test_step_anime_finished_unknown_episode_count():
 
 
 @pytest.mark.asyncio
-async def test_step_anime_search_name_used_for_anilist_and_nyaa():
+async def test_step_anime_search_name_used_for_nyaa_only():
     cfg = _make_cfg()
     state = _make_state(["That Time I Got Reincarnated as a Slime Season 4"])
     entry = MediaEntry(
@@ -125,7 +125,7 @@ async def test_step_anime_search_name_used_for_anilist_and_nyaa():
          patch.object(state, "remove", new_callable = AsyncMock):
         await _step_anime(cfg, state, entry)
 
-    assert lookup_calls == ["Tensei Shitara Slime Datta Ken 4th Season"]
+    assert lookup_calls == ["That Time I Got Reincarnated as a Slime Season 4"]
     mock_dl.assert_called_once_with(cfg, "Tensei Shitara Slime Datta Ken 4th Season", 2, [])
 
 

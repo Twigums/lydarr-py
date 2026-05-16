@@ -47,6 +47,8 @@ async def search(query: str, media_type: MediaType) -> list[AnilistMedia]:
 
 async def find_by_title(title: str, media_type: MediaType) -> AnilistMedia | None:
     results = await search(title, media_type)
+    if not results and ":" in title:
+        results = await search(title.rsplit(":", 1)[0].strip(), media_type)
     q = title.lower()
     for m in results:
         if (m.title_english or "").lower() == q or (m.title_romaji or "").lower() == q:

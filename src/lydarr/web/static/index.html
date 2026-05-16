@@ -539,18 +539,19 @@ async function toggleDaemon() {
   btn.disabled = true;
   document.getElementById('rt-dot').className = 'dot grey';
   try {
-    const active = daemonRunning || transmissionOnline;
-    const daemonUrl = active ? '/api/daemon/stop' : '/api/daemon/start';
+    const stopping = daemonRunning && transmissionOnline;
+    const daemonUrl = daemonRunning ? '/api/daemon/stop' : '/api/daemon/start';
     const daemonRes = await fetch(daemonUrl, { method: 'POST' });
     const daemonData = await daemonRes.json();
-    if (!daemonData.ok && !active) {
+    if (!daemonData.ok && !daemonRunning) {
       showToast(daemonData.reason || 'Could not start daemon');
-      await pollRtorrent();
-      await pollDaemon();
-      return;
     }
-    const txUrl = active ? '/api/transmission/stop' : '/api/transmission/start';
-    await fetch(txUrl, { method: 'POST' });
+    const txUrl = stopping ? '/api/transmission/stop' : '/api/transmission/start';
+    const txRes = await fetch(txUrl, { method: 'POST' });
+    const txData = await txRes.json();
+    if (!txData.ok && !stopping) {
+      showToast(txData.reason || 'Could not start Transmission');
+    }
     await pollRtorrent();
     await pollDaemon();
   } finally {

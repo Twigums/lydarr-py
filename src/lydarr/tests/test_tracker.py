@@ -1,14 +1,11 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timezone, timedelta
 
-from animeschedule.types import AirStatus, EpisodeRecord, AnimeDetail, NotFoundError
-from anilist.types import AnilistMedia, MediaType as AnilistMediaType, MediaStatus as AnilistMediaStatus
+from anilist.types import AnilistMedia, MediaType, MediaStatus
 from lydarr.config import AppConfig
 from lydarr.file_manager import MediaEntry, MediaState
-from lydarr.tracker import (
-    _log, _pad, _next_episode_time, _step_anime, track_media, _resolve_schedule,
-)
+from lydarr.tracker import _log, _pad, _step_anime, track_media
 
 
 def _make_cfg() -> AppConfig:
@@ -29,45 +26,22 @@ def _make_state(titles: list[str] | None = None) -> MediaState:
     return MediaState(entries)
 
 
-def _make_detail(status: AirStatus, episodes: int | None = 25) -> AnimeDetail:
-    return AnimeDetail(
-        title = "Solo Leveling",
-        route = "solo-leveling-s2",
-        premier = datetime(2025, 1, 4, 15, 0, 0, tzinfo = timezone.utc),
-        sub_premier = datetime(2025, 1, 4, 17, 30, 0, tzinfo = timezone.utc),
-        dub_premier = None,
-        jpn_time = datetime(2025, 1, 4, 15, 0, 0, tzinfo = timezone.utc),
-        sub_time = datetime(2025, 1, 4, 17, 30, 0, tzinfo = timezone.utc),
-        dub_time = None,
-        status = status,
-        episodes = episodes,
-    )
-
-
-def _make_episodes(n: int, past: bool = True) -> list[EpisodeRecord]:
-    now = datetime.now(tz = timezone.utc)
-    delta = timedelta(weeks = 1)
-    records = []
-    for i in range(1, n + 1):
-        if past:
-            t = now - delta * (n - i + 1)
-        else:
-            t = now + delta * i
-        records.append(EpisodeRecord(number = i, raw = t, sub = t, dub = None))
-    return records
-
-
-def _make_anilist_result(romaji: str) -> AnilistMedia:
+def _make_info(
+    status: MediaStatus,
+    episodes: int | None = 25,
+    next_airing_at: int | None = None,
+    next_airing_episode: int | None = None,
+) -> AnilistMedia:
     return AnilistMedia(
         id = 1,
         title_english = "Solo Leveling",
-        title_romaji = romaji,
-        media_type = AnilistMediaType.ANIME,
-        status = AnilistMediaStatus.FINISHED,
-        episodes = 2,
+        title_romaji = "Solo Leveling",
+        media_type = MediaType.ANIME,
+        status = status,
+        episodes = episodes,
         chapters = None,
-        next_airing_at = None,
-        next_airing_episode = None,
+        next_airing_at = next_airing_at,
+        next_airing_episode = next_airing_episode,
     )
 
 
@@ -83,34 +57,18 @@ def test_pad():
     assert _pad(25) == "25"
 
 
-def test_next_episode_time_future():
-    now = datetime.now(tz = timezone.utc)
-    future = now + timedelta(hours = 2)
-    episodes = [
-        EpisodeRecord(number = 1, raw = now - timedelta(days = 7), sub = now - timedelta(days = 7), dub = None),
-        EpisodeRecord(number = 2, raw = future, sub = future, dub = None),
-    ]
-    result = _next_episode_time(episodes, now)
-    assert result is not None
-    ep_num, ep_time = result
-    assert ep_num == 2
-    assert ep_time == future
+@pytest.mark.asyncio
+async def test_step_anime_not_found_retries():
+    cfg = _make_cfg()
+    state = _make_state(["Solo Leveling"])
+    entry = MediaEntry(title = "Solo Leveling")
 
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = None), \
+         patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock) as mock_sleep:
+        result = await _step_anime(cfg, state, entry)
 
-def test_next_episode_time_none_when_all_past():
-    now = datetime.now(tz = timezone.utc)
-    past = now - timedelta(hours = 1)
-    episodes = [EpisodeRecord(number = 1, raw = past, sub = past, dub = None)]
-    result = _next_episode_time(episodes, now)
-    assert result is None
-
-
-def test_next_episode_time_none_sub():
-    now = datetime.now(tz = timezone.utc)
-    future = now + timedelta(hours = 2)
-    episodes = [EpisodeRecord(number = 1, raw = future, sub = None, dub = None)]
-    result = _next_episode_time(episodes, now)
-    assert result is None
+    mock_sleep.assert_called_once_with(6 * 3600)
+    assert result is True
 
 
 @pytest.mark.asyncio
@@ -118,12 +76,10 @@ async def test_step_anime_finished_downloads_all():
     cfg = _make_cfg()
     state = _make_state(["Solo Leveling"])
     entry = MediaEntry(title = "Solo Leveling", submitters = ["SubsPlease"])
-    detail = _make_detail(AirStatus.FINISHED, episodes = 25)
-    episodes = _make_episodes(25)
+    info = _make_info(MediaStatus.FINISHED, episodes = 25)
 
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)), \
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = info), \
          patch("lydarr.tracker._download_all_episodes", new_callable = AsyncMock) as mock_dl, \
-         patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock), \
          patch.object(state, "remove", new_callable = AsyncMock) as mock_remove:
         result = await _step_anime(cfg, state, entry)
 
@@ -133,33 +89,55 @@ async def test_step_anime_finished_downloads_all():
 
 
 @pytest.mark.asyncio
-async def test_step_anime_finished_uses_search_name():
+async def test_step_anime_finished_unknown_episode_count():
     cfg = _make_cfg()
     state = _make_state(["Solo Leveling"])
-    entry = MediaEntry(title = "Solo Leveling", search_name = "Solo Leveling S2", submitters = [])
-    detail = _make_detail(AirStatus.FINISHED, episodes = 2)
-    episodes = _make_episodes(2)
+    entry = MediaEntry(title = "Solo Leveling")
+    info = _make_info(MediaStatus.FINISHED, episodes = None)
 
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)), \
-         patch("lydarr.tracker._download_all_episodes", new_callable = AsyncMock) as mock_dl, \
-         patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock), \
-         patch.object(state, "remove", new_callable = AsyncMock):
-        await _step_anime(cfg, state, entry)
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = info), \
+         patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock) as mock_sleep:
+        result = await _step_anime(cfg, state, entry)
 
-    mock_dl.assert_called_once_with(cfg, "Solo Leveling S2", 2, [])
+    mock_sleep.assert_called_once_with(6 * 3600)
+    assert result is True
 
 
 @pytest.mark.asyncio
-async def test_step_anime_ongoing_returns_true():
+async def test_step_anime_search_name_used_for_anilist_and_nyaa():
+    cfg = _make_cfg()
+    state = _make_state(["That Time I Got Reincarnated as a Slime Season 4"])
+    entry = MediaEntry(
+        title = "That Time I Got Reincarnated as a Slime Season 4",
+        search_name = "Tensei Shitara Slime Datta Ken 4th Season",
+        submitters = [],
+    )
+    info = _make_info(MediaStatus.FINISHED, episodes = 2)
+
+    lookup_calls = []
+
+    async def mock_find(name, media_type):
+        lookup_calls.append(name)
+        return info
+
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, side_effect = mock_find), \
+         patch("lydarr.tracker._download_all_episodes", new_callable = AsyncMock) as mock_dl, \
+         patch.object(state, "remove", new_callable = AsyncMock):
+        await _step_anime(cfg, state, entry)
+
+    assert lookup_calls == ["Tensei Shitara Slime Datta Ken 4th Season"]
+    mock_dl.assert_called_once_with(cfg, "Tensei Shitara Slime Datta Ken 4th Season", 2, [])
+
+
+@pytest.mark.asyncio
+async def test_step_anime_releasing_with_next_episode():
     cfg = _make_cfg()
     state = _make_state(["Solo Leveling"])
     entry = MediaEntry(title = "Solo Leveling", submitters = [])
-    detail = _make_detail(AirStatus.ONGOING)
-    now = datetime.now(tz = timezone.utc)
-    future = now + timedelta(hours = 2)
-    episodes = [EpisodeRecord(number = 1, raw = future, sub = future, dub = None)]
+    future_ts = int((datetime.now(tz = timezone.utc) + timedelta(hours = 2)).timestamp())
+    info = _make_info(MediaStatus.RELEASING, next_airing_at = future_ts, next_airing_episode = 5)
 
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)), \
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = info), \
          patch("lydarr.tracker._sleep_until", new_callable = AsyncMock), \
          patch("lydarr.tracker._wait_and_add_episode", new_callable = AsyncMock), \
          patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock):
@@ -169,14 +147,13 @@ async def test_step_anime_ongoing_returns_true():
 
 
 @pytest.mark.asyncio
-async def test_step_anime_ongoing_no_sub_time():
+async def test_step_anime_releasing_no_schedule():
     cfg = _make_cfg()
     state = _make_state(["Solo Leveling"])
     entry = MediaEntry(title = "Solo Leveling", submitters = [])
-    detail = _make_detail(AirStatus.ONGOING)
-    episodes = [EpisodeRecord(number = 1, raw = None, sub = None, dub = None)]
+    info = _make_info(MediaStatus.RELEASING, next_airing_at = None, next_airing_episode = None)
 
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)), \
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = info), \
          patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock) as mock_sleep:
         result = await _step_anime(cfg, state, entry)
 
@@ -185,14 +162,13 @@ async def test_step_anime_ongoing_no_sub_time():
 
 
 @pytest.mark.asyncio
-async def test_step_anime_upcoming_sleeps():
+async def test_step_anime_not_yet_released():
     cfg = _make_cfg()
     state = _make_state(["Solo Leveling"])
-    entry = MediaEntry(title = "Solo Leveling", submitters = [])
-    detail = _make_detail(AirStatus.UPCOMING)
-    episodes = []
+    entry = MediaEntry(title = "Solo Leveling")
+    info = _make_info(MediaStatus.NOT_YET_RELEASED)
 
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)), \
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = info), \
          patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock) as mock_sleep:
         result = await _step_anime(cfg, state, entry)
 
@@ -201,71 +177,18 @@ async def test_step_anime_upcoming_sleeps():
 
 
 @pytest.mark.asyncio
-async def test_step_anime_unknown_status():
+async def test_step_anime_cancelled():
     cfg = _make_cfg()
     state = _make_state(["Solo Leveling"])
-    entry = MediaEntry(title = "Solo Leveling", submitters = [])
-    detail = _make_detail(AirStatus.UNKNOWN)
-    episodes = []
+    entry = MediaEntry(title = "Solo Leveling")
+    info = _make_info(MediaStatus.CANCELLED)
 
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)), \
+    with patch("lydarr.tracker.find_by_title", new_callable = AsyncMock, return_value = info), \
          patch("lydarr.tracker.asyncio.sleep", new_callable = AsyncMock) as mock_sleep:
         result = await _step_anime(cfg, state, entry)
 
     mock_sleep.assert_called_once_with(3600)
     assert result is True
-
-
-@pytest.mark.asyncio
-async def test_resolve_schedule_succeeds_directly():
-    detail = _make_detail(AirStatus.FINISHED)
-    episodes = _make_episodes(2)
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, return_value = (detail, episodes)):
-        result_detail, result_eps = await _resolve_schedule("Solo Leveling")
-    assert result_detail is detail
-
-
-@pytest.mark.asyncio
-async def test_resolve_schedule_romaji_fallback():
-    detail = _make_detail(AirStatus.FINISHED)
-    episodes = _make_episodes(2)
-    anilist_result = _make_anilist_result("Tensei shitara Slime Datta Ken 4th Season")
-
-    fetch_calls = []
-
-    async def mock_fetch(name):
-        fetch_calls.append(name)
-        if name == "That Time I Got Reincarnated as a Slime Season 4":
-            raise NotFoundError("not found")
-        return (detail, episodes)
-
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, side_effect = mock_fetch), \
-         patch("lydarr.tracker._anilist_find", new_callable = AsyncMock, return_value = anilist_result):
-        result_detail, _ = await _resolve_schedule("That Time I Got Reincarnated as a Slime Season 4")
-
-    assert fetch_calls == [
-        "That Time I Got Reincarnated as a Slime Season 4",
-        "Tensei shitara Slime Datta Ken 4th Season",
-    ]
-    assert result_detail is detail
-
-
-@pytest.mark.asyncio
-async def test_resolve_schedule_raises_when_romaji_also_fails():
-    anilist_result = _make_anilist_result("Tensei shitara Slime Datta Ken 4th Season")
-
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, side_effect = NotFoundError("not found")), \
-         patch("lydarr.tracker._anilist_find", new_callable = AsyncMock, return_value = anilist_result):
-        with pytest.raises(NotFoundError):
-            await _resolve_schedule("That Time I Got Reincarnated as a Slime Season 4")
-
-
-@pytest.mark.asyncio
-async def test_resolve_schedule_raises_when_no_anilist_result():
-    with patch("lydarr.tracker.fetch_by_name", new_callable = AsyncMock, side_effect = NotFoundError("not found")), \
-         patch("lydarr.tracker._anilist_find", new_callable = AsyncMock, return_value = None):
-        with pytest.raises(NotFoundError):
-            await _resolve_schedule("Unknown Title")
 
 
 @pytest.mark.asyncio
@@ -325,7 +248,7 @@ async def test_track_media_manga_uses_step_manga():
 
 @pytest.mark.asyncio
 async def test_track_media_picks_up_updated_entry():
-    """search_name and submitter updates written to state are reflected on subsequent iterations."""
+    """search_name updates written to state are reflected on subsequent iterations."""
     entry = MediaEntry(title = "Solo Leveling")
     state = MediaState([entry])
     cfg = _make_cfg()

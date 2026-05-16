@@ -2,10 +2,8 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from animeschedule.types import AirStatus, EpisodeRecord, NotFoundError
-from animeschedule.schedule import fetch_by_name
-from anilist.search import find_by_title, find_by_title as _anilist_find
-from anilist.types import MediaType, MediaStatus, MediaType as _AnilistMediaType
+from anilist.search import find_by_title
+from anilist.types import MediaType, MediaStatus
 from lydarr.config import AppConfig
 from lydarr.file_manager import MediaState, MediaEntry
 from lydarr.nyaa_search import search_episode, search_chapter
@@ -26,24 +24,6 @@ async def _sleep_until(target: datetime) -> None:
     delta = (target - datetime.now(tz = timezone.utc)).total_seconds()
     if delta > 0:
         await asyncio.sleep(delta)
-
-
-def _next_episode_time(
-    episodes: list[EpisodeRecord], now: datetime
-) -> tuple[int, datetime] | None:
-    future = [(ep.number, ep.sub) for ep in episodes if ep.sub is not None and ep.sub > now]
-    return min(future, key = lambda x: x[1]) if future else None
-
-
-async def _resolve_schedule(name: str):
-    try:
-        return await fetch_by_name(name)
-    except NotFoundError:
-        info = await _anilist_find(name, _AnilistMediaType.ANIME)
-        if info and info.title_romaji and info.title_romaji.lower() != name.lower():
-            _log(name, f"AnimeSchedule lookup failed; retrying with romaji: {info.title_romaji}")
-            return await fetch_by_name(info.title_romaji)
-        raise
 
 
 async def _add_magnet(cfg: AppConfig, name: str, magnet: str, label: str) -> None:
@@ -83,39 +63,46 @@ async def _download_all_episodes(
 
 async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> bool:
     name = entry.title
-    nyaa_name = entry.search_name or entry.title
-    now = datetime.now(tz = timezone.utc)
-    detail, episodes = await _resolve_schedule(name)
+    search_name = entry.search_name or entry.title
+    info = await find_by_title(search_name, MediaType.ANIME)
+    if info is None:
+        _log(name, "Not found on AniList. Retrying in 6h.")
+        await asyncio.sleep(6 * 3600)
+        return True
 
-    match detail.status:
-        case AirStatus.FINISHED:
-            total = detail.episodes or len(episodes)
+    match info.status:
+        case MediaStatus.FINISHED:
+            total = info.episodes or 0
+            if total == 0:
+                _log(name, "Finished but episode count unknown. Checking in 6h.")
+                await asyncio.sleep(6 * 3600)
+                return True
             _log(name, f"Finished. Downloading eps 1..{total}.")
-            await _download_all_episodes(cfg, nyaa_name, total, entry.submitters)
+            await _download_all_episodes(cfg, search_name, total, entry.submitters)
             await state.remove(cfg.anime_file, name)
             _log(name, "Done. Removed from anime.toml.")
             return False
 
-        case AirStatus.ONGOING:
-            nxt = _next_episode_time(episodes, now)
-            if nxt is None:
-                _log(name, "No sub airtime known. Checking in 6h.")
+        case MediaStatus.RELEASING:
+            if info.next_airing_at is None or info.next_airing_episode is None:
+                _log(name, "No next episode scheduled. Checking in 6h.")
                 await asyncio.sleep(6 * 3600)
                 return True
-            ep_num, air_time = nxt
+            ep_num = info.next_airing_episode
+            air_time = datetime.fromtimestamp(info.next_airing_at, tz = timezone.utc)
             trigger = air_time + timedelta(minutes = 30)
             _log(name, f"Next ep {_pad(ep_num)} airs at {air_time}. Searching at {trigger}.")
             await _sleep_until(trigger)
-            await _wait_and_add_episode(cfg, nyaa_name, ep_num, entry.submitters)
+            await _wait_and_add_episode(cfg, search_name, ep_num, entry.submitters)
             return True
 
-        case AirStatus.UPCOMING | AirStatus.DELAYED:
-            _log(name, f"Status: {detail.status.value}. Checking in 6h.")
+        case MediaStatus.NOT_YET_RELEASED | MediaStatus.HIATUS:
+            _log(name, f"Status: {info.status.value}. Checking in 6h.")
             await asyncio.sleep(6 * 3600)
             return True
 
         case _:
-            _log(name, "Status: Unknown. Checking in 1h.")
+            _log(name, f"Status: {info.status.value}. Checking in 1h.")
             await asyncio.sleep(3600)
             return True
 

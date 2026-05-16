@@ -31,10 +31,9 @@ submitters = []          # empty = accept all uploaders
 last_chapter = 1100      # daemon resumes from the next chapter
 ```
 
-- **Anime** titles must match [AnimeSchedule](https://animeschedule.net) exactly (used for episode air times).
-- **Manga** titles must match [AniList](https://anilist.co) (used for chapter counts and release status).
+- Titles are fuzzy-matched against [AniList](https://anilist.co) (used for episode air times, chapter counts, and release status for both anime and manga).
 - `submitters` filters by group name substring in the torrent title (e.g. `"SubsPlease"` matches `"[SubsPlease] ... - 01 (1080p)"`). Falls back to all results if none match.
-- `search_name` (optional) overrides the title used for Nyaa searches — useful for sequel season naming differences.
+- `search_name` (optional) overrides the title used for both AniList and Nyaa lookups — useful when the watchlist title doesn't fuzzy-match the AniList entry.
 - `deprecated` (optional) marks an entry as inactive — preserved in the file but skipped by the daemon and shown separately in the UI.
 
 ## Usage
@@ -60,8 +59,8 @@ The web UI is served at `http://localhost:8080` by default.
 For each entry in `anime.toml`, a coroutine runs concurrently via `asyncio.gather`:
 
 **Anime:**
-1. Fetches air schedule from AnimeSchedule.net
-2. Sleeps until the next episode's sub air time
+1. Fetches episode air schedule from AniList
+2. Sleeps until the next episode's air time
 3. Searches Nyaa.si (tries four query variants, filters by submitter, prefers HEVC/x265)
 4. Retries every 30 minutes until a torrent is found
 5. Adds the magnet to Transmission via its JSON-RPC API

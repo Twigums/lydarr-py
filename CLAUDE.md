@@ -4,9 +4,9 @@
 
 Python port of [lydarr](https://github.com/Twigums/lydarr) (Haskell). Daemon that tracks airing anime and releasing manga, searches Nyaa.si for subbed torrents/scanlations, and adds them to Transmission. Includes a web UI for searching media, managing the watchlist, and browsing torrent results manually.
 
-The `nyaa/` and `animeschedule/` packages are **first-party inline ports** of the Haskell libraries at `/home/twi/git/nyaa-hs` and `/home/twi/git/animeschedule-hs`. Do not import external nyaa or animeschedule Python libraries — reimplement from the Haskell source.
+The `nyaa/` package is a **first-party inline port** of the Haskell library at `/home/twi/git/nyaa-hs`. Do not import external nyaa Python libraries — reimplement from the Haskell source.
 
-The `anilist/` package is a lightweight GraphQL client for the [AniList API](https://anilist.co/graphiql), used for web UI search and manga status/chapter tracking.
+The `anilist/` package is a lightweight GraphQL client for the [AniList API](https://anilist.co/graphiql), used for anime and manga status, episode air times, and web UI search.
 
 See `plan.md` for the full roadmap.
 
@@ -28,15 +28,7 @@ lydarr-py/
 │   │       ├── _utils.py   # Shared helpers: last_segment(), read_int()
 │   │       ├── rss.py      # RSS feed → list[Torrent]
 │   │       └── html.py     # HTML listing/detail → list[Torrent] / TorrentDetail
-│   ├── animeschedule/      # Port of animeschedule-hs — AnimeSchedule API client
-│   │   ├── types.py        # AnimeDetail, EpisodeRecord, AirStatus, ScheduleError
-│   │   ├── models.py       # JSON → domain types
-│   │   ├── endpoints.py    # URL builders
-│   │   ├── http.py         # get_json_no_auth()
-│   │   ├── episodes.py     # episode_utc(), feed_episodes(), compute_episodes()
-│   │   ├── season.py       # current_season(), season_slug()
-│   │   └── schedule.py     # search_anime(), fetch_by_name(), fetch_current_schedule()
-│   └── anilist/            # AniList GraphQL client — media search and status
+│   └── anilist/            # AniList GraphQL client — media search, status, and episode air times
 │       ├── types.py        # AnilistMedia, MediaType, MediaStatus, AnilistError
 │       ├── http.py         # graphql() POST helper
 │       └── search.py       # search(), find_by_title()
@@ -65,15 +57,14 @@ lydarr-py/
 | Decision | Choice | Reason |
 |---|---|---|
 | Concurrency | `asyncio` + `asyncio.gather` | One coroutine per title, I/O-bound throughout |
-| HTTP | `httpx` async client | Handles AnimeSchedule JSON, AniList GraphQL, Nyaa bytes, and Transmission RPC |
+| HTTP | `httpx` async client | Handles AniList GraphQL, Nyaa bytes, and Transmission RPC |
 | HTML parsing | `beautifulsoup4` + `lxml` backend | Direct equivalent of html-conduit |
 | XML/RSS parsing | `defusedxml` | Safe XML; equivalent of xml-conduit |
 | Torrent client | Transmission JSON-RPC | Lightweight, simple API, no extra binary needed |
 | Watchlist format | TOML (`anime.toml`) | Human-editable, supports per-title metadata (type, submitters, search_name) |
 | Web framework | FastAPI | Async-native, minimal |
 | Type annotations | Full throughout | Dataclasses for records, `Enum` for sum types |
-| Anime scheduling | AnimeSchedule API | Episode air times; daemon uses this for sleep-until logic |
-| Manga status | AniList GraphQL API | Chapter counts and release status; web UI uses it for both anime and manga search |
+| Anime/manga scheduling | AniList GraphQL API | Episode air times, status, and chapter counts; single API for all media |
 | Transmission stop | `session-close` RPC | Graceful shutdown via existing RPC channel; no subprocess or PID files |
 
 ---
@@ -91,16 +82,16 @@ title = "One Piece"
 type = "manga"
 submitters = []        # empty = accept all uploaders
 last_chapter = 1100   # daemon resumes from next chapter
-search_name = ""      # overrides title for Nyaa queries if set
+search_name = ""      # overrides title for AniList and Nyaa queries if set
 deprecated = true     # hidden in UI; skipped by daemon; can be reactivated
 ```
 
 Fields:
-- `title` — must match AnimeSchedule (for anime) or AniList (for manga) exactly
+- `title` — used as the AniList search query (fuzzy matched); set `search_name` to override
 - `type` — `"anime"` or `"manga"` (default: `"anime"`)
 - `submitters` — case-insensitive substring match against torrent title; falls back to all results if empty or no match
 - `last_chapter` — manga only; daemon downloads chapters after this number
-- `search_name` — optional Nyaa query override (e.g. for sequel season naming differences)
+- `search_name` — optional override for both AniList and Nyaa lookups (e.g. when the English title doesn't fuzzy-match the AniList entry)
 - `deprecated` — optional boolean (default `false`); entry is preserved but hidden/inactive
 
 Read with stdlib `tomllib`; written with a minimal custom serialiser (no extra dependency).

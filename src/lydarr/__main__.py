@@ -10,7 +10,7 @@ from typing import Any
 from lydarr.config import AppConfig, load_config
 from lydarr.file_manager import MediaState, read_entries
 from lydarr.torrent_client import wait_for_client
-from lydarr.tracker import track_media, _next_episode_time
+from lydarr.tracker import track_media
 
 
 def _fmt_utc(dt: datetime) -> str:
@@ -38,32 +38,33 @@ async def _nyaa_has_results(nyaa_name: str) -> bool:
 
 
 async def _debug_report(cfg: AppConfig) -> None:
-    from animeschedule.schedule import fetch_by_name
-    from animeschedule.types import AirStatus
+    from anilist.search import find_by_title
+    from anilist.types import MediaType, MediaStatus
 
     entries = [e for e in read_entries(cfg.anime_file) if e.media_type == "anime" and not e.deprecated]
     if not entries:
         print("No active anime entries.")
         return
 
-    now = datetime.now(tz = timezone.utc)
     for entry in entries:
         try:
-            detail, episodes = await fetch_by_name(entry.title)
-            if detail.status == AirStatus.ONGOING:
-                nxt = _next_episode_time(episodes, now)
-                if nxt:
-                    ep_num, air_time = nxt
-                    print(f"  {entry.title}: ep {ep_num:02d} at {_fmt_utc(air_time)}")
-                    nyaa_name = entry.search_name or entry.title
-                    if not await _nyaa_has_results(nyaa_name):
-                        print(f"    ! No Nyaa results for \"{nyaa_name}\"")
+            search_name = entry.search_name or entry.title
+            info = await find_by_title(search_name, MediaType.ANIME)
+            if info is None:
+                print(f"  {entry.title}: not found on AniList")
+                continue
+            if info.status == MediaStatus.RELEASING:
+                if info.next_airing_at and info.next_airing_episode:
+                    air_time = datetime.fromtimestamp(info.next_airing_at, tz = timezone.utc)
+                    print(f"  {entry.title}: ep {info.next_airing_episode:02d} at {_fmt_utc(air_time)}")
+                    if not await _nyaa_has_results(search_name):
+                        print(f"    ! No Nyaa results for \"{search_name}\"")
                         if not entry.search_name:
                             print(f"    -> Use the web UI to search and set a search name")
                 else:
-                    print(f"  {entry.title}: Ongoing (no future episode scheduled)")
+                    print(f"  {entry.title}: Releasing (no next episode scheduled)")
             else:
-                print(f"  {entry.title}: {detail.status.value}")
+                print(f"  {entry.title}: {info.status.value}")
         except Exception as exc:
             print(f"  {entry.title}: error — {exc}")
 

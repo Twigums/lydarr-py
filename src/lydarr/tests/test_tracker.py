@@ -83,7 +83,7 @@ async def test_step_anime_finished_downloads_all():
          patch.object(state, "remove", new_callable = AsyncMock) as mock_remove:
         result = await _step_anime(cfg, state, entry)
 
-    mock_dl.assert_called_once_with(cfg, "Solo Leveling", 25, ["SubsPlease"])
+    mock_dl.assert_called_once_with(cfg, "Solo Leveling", 25, ["SubsPlease"], "/downloads/Solo Leveling")
     mock_remove.assert_called_once_with("/tmp/test.toml", "Solo Leveling")
     assert result is False
 
@@ -126,7 +126,7 @@ async def test_step_anime_search_name_used_for_nyaa_only():
         await _step_anime(cfg, state, entry)
 
     assert lookup_calls == ["That Time I Got Reincarnated as a Slime Season 4"]
-    mock_dl.assert_called_once_with(cfg, "Tensei Shitara Slime Datta Ken 4th Season", 2, [])
+    mock_dl.assert_called_once_with(cfg, "Tensei Shitara Slime Datta Ken 4th Season", 2, [], "/downloads/Solo Leveling")
 
 
 @pytest.mark.asyncio

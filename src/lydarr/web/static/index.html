@@ -803,7 +803,7 @@ async function addTorrent(idx, btn) {
     const r = await fetch('/api/torrents/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ magnet: t.magnet }),
+      body: JSON.stringify({ magnet: t.magnet, title: document.getElementById('torrent-q').value.trim() || null }),
     });
     const d = await r.json();
     if (d.ok) {

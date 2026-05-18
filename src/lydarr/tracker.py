@@ -21,7 +21,7 @@ def _safe_dirname(name: str) -> str:
 
 
 def _log(name: str, msg: str) -> None:
-    print(f"[{name}] {msg}")
+    print(f"[{name}] {msg}", flush=True)
 
 
 def _pad(n: int) -> str:
@@ -35,6 +35,13 @@ async def _sleep_until(target: datetime) -> None:
 
 
 async def _add_magnet(cfg: AppConfig, name: str, magnet: str, label: str, download_dir: str | None = None) -> None:
+    if download_dir:
+        try:
+            os.makedirs(download_dir, exist_ok=True)
+            _log(name, f"Download dir: {download_dir}")
+        except OSError as e:
+            _log(name, f"Could not create download dir {download_dir}: {e}")
+            download_dir = None
     ok = await add_magnet(cfg.transmission_url, cfg.transmission_user,
                           cfg.transmission_pass, magnet, download_dir)
     if ok:
@@ -79,6 +86,7 @@ async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> b
         return True
 
     download_dir = os.path.join(cfg.default_dir, _safe_dirname(info.display_title()))
+    _log(name, f"Will save to: {download_dir}")
 
     match info.status:
         case MediaStatus.FINISHED:

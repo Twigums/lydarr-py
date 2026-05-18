@@ -31,14 +31,14 @@ lydarr-py/
 │   └── anilist/            # AniList GraphQL client — media search, status, and episode air times
 │       ├── types.py        # AnilistMedia, MediaType, MediaStatus, AnilistError
 │       ├── http.py         # graphql() POST helper
-│       └── search.py       # search(), find_by_title()
+│       └── search.py       # search(), find_by_title() — retries with pre-colon substring when full title returns no results
 └── src/
     └── lydarr/
         ├── config.py       # AppConfig from env vars (Transmission URL/auth, media file, download dir)
         ├── torrent_client.py  # is_client_up(), wait_for_client(), add_magnet(), _rpc() via Transmission JSON-RPC
         ├── nyaa_search.py  # search_episode(), search_chapter(): query variants, filter_submitters(), prefer_hevc()
-        ├── file_manager.py # MediaEntry(title, type, submitters, deprecated), MediaState, read_entries(), TOML I/O
-        ├── tracker.py      # track_media(cfg, state, entry) async coroutine; dispatches anime vs manga
+        ├── file_manager.py # MediaEntry(title, type, submitters, deprecated), MediaState (get/remove/update), read_entries(), TOML I/O
+        ├── tracker.py      # track_media(cfg, state, entry) async coroutine; dispatches anime vs manga; downloads into per-title subdir under LYDARR_DEFAULT_DIR named from AniList display title (_safe_dirname strips invalid path chars)
         ├── web/            # FastAPI web UI
         │   ├── app.py      # create_app(cfg, state); app.state holds cfg, anime_state, daemon_task
         │   ├── routes/
@@ -78,20 +78,25 @@ type = "anime"
 submitters = ["SubsPlease", "Erai-raws"]
 
 [[media]]
+title = "That Time I Got Reincarnated as a Slime Season 4"
+type = "anime"
+submitters = []
+search_name = "Tensei Shitara Slime Datta Ken 4th Season"  # Nyaa query override
+
+[[media]]
 title = "One Piece"
 type = "manga"
 submitters = []        # empty = accept all uploaders
 last_chapter = 1100   # daemon resumes from next chapter
-search_name = ""      # overrides title for AniList and Nyaa queries if set
 deprecated = true     # hidden in UI; skipped by daemon; can be reactivated
 ```
 
 Fields:
-- `title` — used as the AniList search query (fuzzy matched); set `search_name` to override
+- `title` — used as the AniList search query; also the display name throughout
 - `type` — `"anime"` or `"manga"` (default: `"anime"`)
 - `submitters` — case-insensitive substring match against torrent title; falls back to all results if empty or no match
 - `last_chapter` — manga only; daemon downloads chapters after this number
-- `search_name` — optional override for both AniList and Nyaa lookups (e.g. when the English title doesn't fuzzy-match the AniList entry)
+- `search_name` — optional override for Nyaa lookups only; AniList always uses `title` directly
 - `deprecated` — optional boolean (default `false`); entry is preserved but hidden/inactive
 
 Read with stdlib `tomllib`; written with a minimal custom serialiser (no extra dependency).
@@ -141,7 +146,7 @@ uv run python -m lydarr --web-only --host 127.0.0.1 --port 8080
 - **snake_case** everywhere — functions, variables, modules
 - **No comments** unless the why is non-obvious (a hidden constraint, workaround, etc.)
 - **Dataclasses** for all record types; `frozen=True` where the object shouldn't mutate
-- **Custom exceptions** (`NyaaError`, `ScheduleError`, `AnilistError`) for domain errors; catch at the tracker boundary
+- **Custom exceptions** (`NyaaError`, `AnilistError`) for domain errors; catch at the tracker boundary
 - **`asyncio.sleep`** instead of `time.sleep` — all loops are async
 - Prefer returning `None` over raising when a "not found" is a normal outcome (e.g., no torrent yet)
 

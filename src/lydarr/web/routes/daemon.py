@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 
-from lydarr.torrent_client import is_client_up, _rpc
+from lydarr.torrent_client import is_client_up
 from lydarr.tracker import track_media
 
 _log = logging.getLogger(__name__)
@@ -71,14 +71,21 @@ async def transmission_stop(request: Request):
     if not await is_client_up(cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass):
         return {"ok": True, "stopped": False}
     try:
-        await _rpc(cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass, "session-close")
+        proc = await asyncio.create_subprocess_exec(
+            "systemctl", "--user", "stop", "transmission-daemon",
+            stdout = asyncio.subprocess.DEVNULL,
+            stderr = asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
     except Exception as exc:
         _log.error("transmission stop failed: %s", exc)
         return {"ok": False, "reason": "internal error"}
     for _ in range(10):
         await asyncio.sleep(1)
         if not await is_client_up(cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass):
+            _log.info("Transmission stopped.")
             return {"ok": True, "stopped": True}
+    _log.warning("Transmission stop timed out.")
     return {"ok": False, "reason": "timed out"}
 
 
@@ -89,18 +96,20 @@ async def transmission_start(request: Request):
         return {"ok": True, "started": False}
     try:
         proc = await asyncio.create_subprocess_exec(
-            "transmission-daemon",
+            "systemctl", "--user", "start", "transmission-daemon",
             stdout = asyncio.subprocess.DEVNULL,
             stderr = asyncio.subprocess.DEVNULL,
         )
         await proc.wait()
     except FileNotFoundError:
-        return {"ok": False, "reason": "transmission-daemon not found"}
+        return {"ok": False, "reason": "systemctl not found"}
     except Exception as exc:
         _log.error("transmission start failed: %s", exc)
         return {"ok": False, "reason": "internal error"}
     for _ in range(10):
         await asyncio.sleep(1)
         if await is_client_up(cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass):
+            _log.info("Transmission started.")
             return {"ok": True, "started": True}
+    _log.warning("Transmission start timed out.")
     return {"ok": False, "reason": "timed out"}

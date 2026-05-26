@@ -50,6 +50,9 @@ uv run python -m lydarr --web-only
 
 # Bind to a specific address/port (e.g. behind a reverse proxy)
 uv run python -m lydarr --web-only --host 127.0.0.1 --port 8080
+
+# Write logs to a file in addition to stdout
+uv run python -m lydarr --log lydarr.log
 ```
 
 The web UI is served at `http://localhost:8080` by default.
@@ -63,7 +66,7 @@ For each entry in `anime.toml`, a coroutine runs concurrently via `asyncio.gathe
 2. Sleeps until the next episode's air time
 3. Searches Nyaa.si (tries four query variants, filters by submitter, prefers HEVC/x265)
 4. Retries every 30 minutes until a torrent is found
-5. Adds the magnet to Transmission via its JSON-RPC API
+5. Adds the magnet to Transmission via its JSON-RPC API, saving to a per-title subfolder under `LYDARR_DEFAULT_DIR`
 6. Removes the entry from `anime.toml` once all episodes are downloaded
 
 **Manga:**
@@ -80,11 +83,51 @@ Three resizable panels:
 - **Watchlist** — current `anime.toml` entries with submitter tags; click a title to search its torrents; edit submitters and search name inline; deprecate or remove entries
 - **Torrent browser** — search Nyaa by title and optional episode number, filter by HEVC/x265 or torrent type (Trusted/Normal/Remake), sort by any column (resizable), add directly to Transmission
 
-**Header** — red/green status dots for Transmission and Daemon. **Floating button** (bottom-right) starts and stops both the lydarr daemon and Transmission together.
+When adding a torrent from the browser, click the show title in the watchlist panel first to set the download folder context — the torrent will be saved to the correct per-title subfolder under `LYDARR_DEFAULT_DIR`. Clearing the search box (✕) resets the context.
+
+**Header** — red/green status dots for Transmission and Daemon. **Floating button** (bottom-right) starts and stops both the lydarr daemon and Transmission together via `systemctl --user`.
 
 ## Running as a systemd service
 
-A service template is included at `lydarr.service`. Install it as a user service:
+### Transmission
+
+Both lydarr and Transmission must run as the **same user** so Transmission can write to that user's download directory. The system package unit (`/lib/systemd/system/transmission-daemon.service`) runs as `debian-transmission`, so a user-level unit is required instead:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/transmission-daemon.service << 'EOF'
+[Unit]
+Description=Transmission BitTorrent Daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/transmission-daemon -f --log-level=error
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now transmission-daemon
+```
+
+#### rclone / FUSE download targets
+
+If `LYDARR_DEFAULT_DIR` is on an rclone FUSE mount, disable partial-file renaming in Transmission's `~/.config/transmission-daemon/settings.json` (stop Transmission first, edit, then restart):
+
+```json
+"rename-partial-files": false
+```
+
+Without this, Transmission downloads to `filename.mkv.part` and renames on completion — rclone FUSE does not support that rename and the transfer fails with an I/O error.
+
+### Lydarr
+
+A service template is included at `lydarr.service`. It assumes the repo is at `~/git/lydarr-py`; adjust the paths if needed:
 
 ```bash
 # Install
@@ -93,11 +136,12 @@ cp lydarr.service ~/.config/systemd/user/lydarr.service
 systemctl --user daemon-reload
 systemctl --user enable --now lydarr
 
-# Survive logout (start at boot without an active login session)
+# Survive logout (keeps user services running without an active login session)
+# Required for both lydarr and transmission-daemon user services
 loginctl enable-linger
 ```
 
-Environment variables go in `~/.config/lydarr/env` (one `KEY=value` per line, no `export`):
+Environment variables go in `~/.config/lydarr/env` (one `KEY=value` per line, no `export`). Use absolute paths — the working directory when running as a service may differ from the repo root:
 
 ```bash
 mkdir -p ~/.config/lydarr
@@ -119,11 +163,13 @@ journalctl --user -u lydarr -n 100  # last 100 lines
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANIME_FILE` | `anime.toml` | Path to watchlist file |
+| `ANIME_FILE` | `anime.toml` | Path to watchlist file (use absolute path when running as a service) |
 | `TRANSMISSION_URL` | `http://localhost:9091/transmission/rpc` | Transmission RPC endpoint |
 | `TRANSMISSION_USER` | unset | Transmission username (if auth enabled) |
 | `TRANSMISSION_PASS` | unset | Transmission password (if auth enabled) |
-| `LYDARR_DEFAULT_DIR` | `~/Downloads` | Download directory passed to Transmission |
+| `LYDARR_DEFAULT_DIR` | `~/Downloads` | Root download directory; each title gets its own subfolder |
+| `LYDARR_USER` | unset | Web UI username for HTTP Basic Auth; leave unset to disable auth |
+| `LYDARR_PASS` | unset | Web UI password; required when `LYDARR_USER` is set |
 | `LYDARR_WEB` | unset | Set to `1` to enable web UI alongside daemon |
 | `LYDARR_WEB_HOST` | `0.0.0.0` | Web UI bind address (overridden by `--host`) |
 | `LYDARR_WEB_PORT` | `8080` | Web UI port (overridden by `--port`) |

@@ -670,6 +670,7 @@ async function trackAnime(idx, btn) {
 }
 
 function clearTorrentSearch() {
+  _watchlistTitle = null;
   document.getElementById('torrent-q').value = '';
   document.getElementById('torrent-q').focus();
   allTorrents = [];
@@ -803,7 +804,7 @@ async function addTorrent(idx, btn) {
     const r = await fetch('/api/torrents/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ magnet: t.magnet }),
+      body: JSON.stringify({ magnet: t.magnet, title: _watchlistTitle || document.getElementById('torrent-q').value.trim() || null }),
     });
     const d = await r.json();
     if (d.ok) {
@@ -905,12 +906,15 @@ async function fetchWatchlistStatus(entry, idx) {
   } catch { /* silently ignore */ }
 }
 
+let _watchlistTitle = null;
+
 function searchFromWatchlist(btn) {
   const title = btn.dataset.title;
   const type = btn.dataset.type || 'anime';
   const item = btn.closest('.watchlist-item');
   const snInput = item && item.querySelector('[id^="wl-sn-input-"]');
   const searchName = (snInput && snInput.value.trim()) || btn.dataset.searchname || title;
+  _watchlistTitle = title;
   setSearchType(type);
   document.getElementById('torrent-q').value = searchName;
   document.getElementById('torrent-ep').value = '';

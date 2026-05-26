@@ -1,6 +1,7 @@
 """Start the daemon and optional web server; handles CLI args."""
 import argparse
 import asyncio
+import logging
 import os
 import sys
 from collections.abc import Coroutine
@@ -11,6 +12,21 @@ from lydarr.config import AppConfig, load_config
 from lydarr.file_manager import MediaState, read_entries
 from lydarr.torrent_client import wait_for_client
 from lydarr.tracker import track_media
+
+_logger = logging.getLogger("lydarr")
+
+
+def _setup_logging(log_file: str | None) -> None:
+    fmt = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    _logger.setLevel(logging.DEBUG)
+    _logger.propagate = False
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    _logger.addHandler(sh)
+    if log_file:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setFormatter(fmt)
+        _logger.addHandler(fh)
 
 
 def _fmt_utc(dt: datetime) -> str:
@@ -77,9 +93,9 @@ async def _run(web_only: bool, host: str, port: int, debug: bool) -> None:
         return
 
     if cfg.default_dir_set:
-        print(f"Downloads will go to: $LYDARR_DEFAULT_DIR = {cfg.default_dir}")
+        _logger.info("Downloads will go to: $LYDARR_DEFAULT_DIR = %s", cfg.default_dir)
     else:
-        print(f"$LYDARR_DEFAULT_DIR unset. Defaulting to {cfg.default_dir}")
+        _logger.info("$LYDARR_DEFAULT_DIR unset. Defaulting to %s", cfg.default_dir)
 
     if web_only:
         from lydarr.web.app import create_app
@@ -87,7 +103,7 @@ async def _run(web_only: bool, host: str, port: int, debug: bool) -> None:
 
         state = MediaState(read_entries(cfg.anime_file))
         app = create_app(cfg, state)
-        server = uvicorn.Server(uvicorn.Config(app, host = host, port = port))
+        server = uvicorn.Server(uvicorn.Config(app, host = host, port = port, log_config = None))
         await server.serve()
         return
 
@@ -95,11 +111,11 @@ async def _run(web_only: bool, host: str, port: int, debug: bool) -> None:
 
     entries = read_entries(cfg.anime_file)
     if not entries:
-        print("`anime.toml` is empty — add [[media]] entries or use --web-only")
+        _logger.info("`anime.toml` is empty — add [[media]] entries or use --web-only")
         return
 
     titles = ", ".join(e.title for e in entries)
-    print(f"Tracking {len(entries)} title(s): {titles}")
+    _logger.info("Tracking %d title(s): %s", len(entries), titles)
     state = MediaState(entries)
 
     tasks: list[Coroutine[Any, Any, None]] = [track_media(cfg, state, entry) for entry in entries]
@@ -109,7 +125,7 @@ async def _run(web_only: bool, host: str, port: int, debug: bool) -> None:
         import uvicorn
 
         app = create_app(cfg, state)
-        server = uvicorn.Server(uvicorn.Config(app, host = host, port = port))
+        server = uvicorn.Server(uvicorn.Config(app, host = host, port = port, log_config = None))
         tasks.append(server.serve())
 
     await asyncio.gather(*tasks)
@@ -125,10 +141,14 @@ def main() -> None:
                         help = "web UI port (default: 8080, or $LYDARR_WEB_PORT)")
     parser.add_argument("--debug", action = "store_true",
                         help = "print each tracked anime's next episode time (UTC) and exit")
+    parser.add_argument("--log", metavar = "FILE", default = None,
+                        help = "write daemon logs to FILE in addition to stdout")
     args = parser.parse_args()
 
     host = args.host if args.host is not None else os.environ.get("LYDARR_WEB_HOST", "0.0.0.0")
     port = args.port if args.port is not None else int(os.environ.get("LYDARR_WEB_PORT", "8080"))
+
+    _setup_logging(args.log)
 
     try:
         asyncio.run(_run(web_only = args.web_only, host = host, port = port, debug = args.debug))

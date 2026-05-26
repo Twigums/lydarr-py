@@ -26,7 +26,7 @@ def load_config() -> AppConfig:
     transmission_user = os.environ.get("TRANSMISSION_USER") or None
     transmission_pass = os.environ.get("TRANSMISSION_PASS") or None
     default_dir_env = os.environ.get("LYDARR_DEFAULT_DIR")
-    default_dir = default_dir_env or str(Path.home() / "Downloads")
+    default_dir = str(Path(default_dir_env).expanduser()) if default_dir_env else str(Path.home() / "Downloads")
     lydarr_user = os.environ.get("LYDARR_USER") or None
     lydarr_pass = os.environ.get("LYDARR_PASS") or None
     return AppConfig(

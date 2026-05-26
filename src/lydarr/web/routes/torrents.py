@@ -1,13 +1,20 @@
 """Torrent search and add routes."""
+import asyncio
+import logging
+import os
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, field_validator
 
 from nyaa.search import search as nyaa_search
 from nyaa.types import SearchParams, SortField, SortOrder, TorrentSite
 from lydarr.nyaa_search import prefer_hevc
-from lydarr.torrent_client import add_magnet
+from lydarr.torrent_client import add_magnet, remove_when_done
+from lydarr.tracker import _safe_dirname
 
 router = APIRouter(prefix = "/api")
+
+_log = logging.getLogger(__name__)
 
 _SITE_MAP: dict[str, TorrentSite] = {
     "nyaa_si": TorrentSite.NYAA_SI,
@@ -54,6 +61,7 @@ async def search_torrents(
 
 class AddMagnetBody(BaseModel):
     magnet: str
+    title: str | None = None
 
     @field_validator("magnet")
     @classmethod
@@ -66,10 +74,27 @@ class AddMagnetBody(BaseModel):
 @router.post("/torrents/add")
 async def add_torrent(body: AddMagnetBody, request: Request):
     cfg = request.app.state.cfg
-    ok = await add_magnet(
+    download_dir = cfg.default_dir
+    if body.title:
+        q = body.title.lower()
+        entries = [e for e in request.app.state.anime_state.entries() if not e.deprecated]
+        match = next(
+            (e for e in entries
+             if q in e.title.lower() or q in (e.search_name or "").lower()),
+            None,
+        )
+        folder = _safe_dirname(match.title if match else body.title)
+        download_dir = os.path.join(cfg.default_dir, folder)
+        os.makedirs(download_dir, exist_ok=True)
+    torrent_id = await add_magnet(
         cfg.transmission_url, cfg.transmission_user,
-        cfg.transmission_pass, body.magnet, cfg.default_dir,
+        cfg.transmission_pass, body.magnet, download_dir,
     )
-    if ok:
+    if torrent_id is not None:
+        _log.info("Added torrent to Transmission: %s -> %s", body.title or "(no title)", download_dir)
+        asyncio.create_task(remove_when_done(
+            cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass, torrent_id,
+        ))
         return {"ok": True}
+    _log.error("Transmission rejected magnet for: %s", body.title or "(no title)")
     return {"ok": False, "error": "Transmission rejected the magnet"}

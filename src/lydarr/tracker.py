@@ -1,5 +1,6 @@
 """Per-title async tracking coroutines for anime and manga."""
 import asyncio
+import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -9,11 +10,13 @@ from anilist.types import MediaType, MediaStatus
 from lydarr.config import AppConfig
 from lydarr.file_manager import MediaState, MediaEntry
 from lydarr.nyaa_search import search_episode, search_chapter
-from lydarr.torrent_client import add_magnet
+from lydarr.torrent_client import add_magnet, remove_when_done
 
 _WARN_INTERVAL = 48
 
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00]')
+
+_logger = logging.getLogger("lydarr.tracker")
 
 
 def _safe_dirname(name: str) -> str:
@@ -21,7 +24,7 @@ def _safe_dirname(name: str) -> str:
 
 
 def _log(name: str, msg: str) -> None:
-    print(f"[{name}] {msg}")
+    _logger.info("[%s] %s", name, msg)
 
 
 def _pad(n: int) -> str:
@@ -35,10 +38,19 @@ async def _sleep_until(target: datetime) -> None:
 
 
 async def _add_magnet(cfg: AppConfig, name: str, magnet: str, label: str, download_dir: str | None = None) -> None:
-    ok = await add_magnet(cfg.transmission_url, cfg.transmission_user,
-                          cfg.transmission_pass, magnet, download_dir)
-    if ok:
-        _log(name, f"Added {label} to Transmission.")
+    if download_dir:
+        try:
+            os.makedirs(download_dir, exist_ok=True)
+        except OSError as e:
+            _log(name, f"Could not create download dir {download_dir}: {e}")
+            download_dir = None
+    torrent_id = await add_magnet(cfg.transmission_url, cfg.transmission_user,
+                                  cfg.transmission_pass, magnet, download_dir)
+    if torrent_id is not None:
+        _log(name, f"Added {label} to Transmission -> {download_dir or cfg.default_dir}")
+        asyncio.create_task(remove_when_done(
+            cfg.transmission_url, cfg.transmission_user, cfg.transmission_pass, torrent_id,
+        ))
     else:
         _log(name, f"Transmission error for {label}.")
 
@@ -79,6 +91,7 @@ async def _step_anime(cfg: AppConfig, state: MediaState, entry: MediaEntry) -> b
         return True
 
     download_dir = os.path.join(cfg.default_dir, _safe_dirname(info.display_title()))
+    _log(name, f"Will save to: {download_dir}")
 
     match info.status:
         case MediaStatus.FINISHED:

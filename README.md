@@ -1,42 +1,47 @@
 # lydarr-py
 
-Python port of [lydarr](https://github.com/Twigums/lydarr). Daemon that tracks airing anime and releasing manga, waits for each episode or chapter's release, searches [Nyaa.si](https://nyaa.si) for subbed torrents/scanlations, and adds them to Transmission automatically. Includes a web UI for searching media, managing the watchlist, and browsing torrent results manually.
+aka "That Time Crunchyroll Ruined My Life, So I Paid Claude $100 To Revive Me?" (クランチロールに人生をぶっ壊された　クロードに１００００円を払っちゃってオレは復活した件）
+
+Anime torrent downloader daemon that tracks airing anime/manga. The daemon waits for each episode or chapter's release, searches nyaa, and adds them to `transmission-daemon` automatically. A web UI is also included for QOL to search for and manage anime/manga.
 
 ## Requirements
 
-- Python 3.14+
-- [uv](https://docs.astral.sh/uv/)
-- [Transmission](https://transmissionbt.com/) (`transmission-daemon`)
+1. Install `uv`.
+
+2. `apt install transmission-daemon`
 
 ## Setup
 
 ```bash
-git clone https://github.com/Twigums/lydarr-py
-cd lydarr-py
 uv sync
 ```
 
-Add entries to `anime.toml`:
+Add entries to `anime.toml` manually:
 
 ```toml
 [[media]]
-title = "Frieren: Beyond Journey's End"
-type = "anime"
-submitters = ["SubsPlease"]
+title = "TITLE_OF_ANIME"
+type = "anime" # "anime" or "manga"
+search_name = "SEARCH_NAME" # title used to search nyaa with
+submitters = ["SUBMITTER_1", "SUBMITTER_2"] # chosen submitter(s)
+deprecated = true # skipped by daemon
 
+
+# TODO
 [[media]]
-title = "One Piece"
+title = "TITLE_OF_MANGA"
 type = "manga"
-submitters = []          # empty = accept all uploaders
-last_chapter = 1100      # daemon resumes from the next chapter
+submitters = [] # empty = accept all uploaders
+last_chapter = 1
 ```
 
-- Titles are fuzzy-matched against [AniList](https://anilist.co) (used for episode air times, chapter counts, and release status for both anime and manga).
-- `submitters` filters by group name substring in the torrent title (e.g. `"SubsPlease"` matches `"[SubsPlease] ... - 01 (1080p)"`). Falls back to all results if none match.
-- `search_name` (optional) overrides the title used for both AniList and Nyaa lookups — useful when the watchlist title doesn't fuzzy-match the AniList entry.
-- `deprecated` (optional) marks an entry as inactive — preserved in the file but skipped by the daemon and shown separately in the UI.
+Or use the web-ui below...
 
-## Usage
+## Configuration
+
+Copy the example env file and fill in your values:
+
+Either locally:
 
 ```bash
 # Daemon only
@@ -146,20 +151,9 @@ Environment variables go in `~/.config/lydarr/env` (one `KEY=value` per line, no
 ```bash
 mkdir -p ~/.config/lydarr
 cp .env.example ~/.config/lydarr/env
-# edit ~/.config/lydarr/env
 ```
 
-Common commands:
-
-```bash
-systemctl --user status lydarr
-systemctl --user restart lydarr
-systemctl --user stop lydarr
-journalctl --user -u lydarr -f      # live logs
-journalctl --user -u lydarr -n 100  # last 100 lines
-```
-
-## Environment variables
+In `.env`:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -173,3 +167,29 @@ journalctl --user -u lydarr -n 100  # last 100 lines
 | `LYDARR_WEB` | unset | Set to `1` to enable web UI alongside daemon |
 | `LYDARR_WEB_HOST` | `0.0.0.0` | Web UI bind address (overridden by `--host`) |
 | `LYDARR_WEB_PORT` | `8080` | Web UI port (overridden by `--port`) |
+
+## Usage
+
+```bash
+# Daemon only
+uv run python -m lydarr
+
+# Web UI only (daemon can be started on web)
+uv run python -m lydarr --web-only
+
+# Bind to a specific address/port
+uv run python -m lydarr --web-only --host 127.0.0.1 --port 8080
+```
+
+## Systemd service
+
+Template is included at `lydarr.service`.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp lydarr.service ~/.config/systemd/user/lydarr.service
+systemctl --user daemon-reload
+systemctl --user enable --now lydarr
+
+loginctl enable-linger
+```
